@@ -116,7 +116,16 @@ def _rus_amount_words(n: float) -> str:
     return " ".join(parts)
 
 
-def build_spec(deal: dict, company: dict) -> str:
+def _main_bank(buyer: dict, field: str) -> str:
+    """Mijozning ASOSIY (is_main='Y') bank hisobidan maydonni oladi."""
+    accounts = (buyer or {}).get("bank_accounts") or []
+    for acc in accounts:
+        if (acc.get("is_main") or "").upper() == "Y":
+            return acc.get(field) or ""
+    return (accounts[0].get(field) or "") if accounts else ""
+
+
+def build_spec(deal: dict, company: dict, buyer: dict = None) -> str:
     wb = Workbook()
     ws = wb.active
     ws.title = "Спецификация"
@@ -157,14 +166,17 @@ def build_spec(deal: dict, company: dict) -> str:
         ("МФО:", company.get("supplier_mfo", "")),
         ("Регис. код плател. НДС:", company.get("supplier_vat_code", "")),
     ]
+    # Mijoz ma'lumoti: legal_person$export (buyer) dan, bo'lmasa order'dan.
+    b = buyer or {}
     buyer_rows = [
-        ("Покупатель:", _g(deal, "person_name")),
-        ("Адрес:", _g(deal, "delivery_address_full", "delivery_address_short")),
-        ("Тел:", _g(deal, "person_phone")),       # odatda javobda yo'q
-        ("ИНН:", _g(deal, "person_tin")),
-        ("Р/с:", ""),                              # mijoz bank ma'lumoti API'da yo'q
-        ("МФО:", ""),
-        ("Регис. код плател. НДС:", ""),
+        ("Покупатель:", b.get("name") or _g(deal, "person_name")),
+        ("Адрес:", b.get("address")
+            or _g(deal, "delivery_address_full", "delivery_address_short")),
+        ("Тел:", b.get("main_phone") or ""),
+        ("ИНН:", b.get("tin") or _g(deal, "person_tin")),
+        ("Р/с:", _main_bank(b, "bank_account_code")),
+        ("МФО:", _main_bank(b, "mfo")),
+        ("Регис. код плател. НДС:", b.get("vat_code") or ""),
     ]
     info_start = 4
     for i, (label, value) in enumerate(supplier_rows):

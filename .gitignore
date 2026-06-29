@@ -1,5 +1,6 @@
 .env
 sent_deals.json
+clients_cache.json
 __pycache__/
 *.pyc
 venv/

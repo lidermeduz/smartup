@@ -20,11 +20,12 @@ import traceback
 from datetime import datetime, timedelta
 
 import config
-from smartup_client import fetch_all_orders
+from smartup_client import fetch_all_orders, fetch_legal_person
 from excel_builder import build_spec
 from telegram_sender import send_excel
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), "sent_deals.json")
+CLIENTS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "clients_cache.json")
 
 
 def load_sent() -> set:
@@ -37,6 +38,37 @@ def load_sent() -> set:
 def save_sent(sent: set) -> None:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(sent), f, ensure_ascii=False, indent=2)
+
+
+def load_clients() -> dict:
+    if os.path.exists(CLIENTS_CACHE_FILE):
+        with open(CLIENTS_CACHE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_clients(clients: dict) -> None:
+    with open(CLIENTS_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(clients, f, ensure_ascii=False, indent=2)
+
+
+def get_buyer(deal: dict, clients: dict):
+    """Mijoz (yuridik shaxs) ma'lumotini keshdan yoki API'dan oladi.
+    References limiti 100/kun bo'lgani uchun person_code bo'yicha keshlaymiz.
+    Topilmaganini ham keshlaymiz (qayta-qayta so'ramaslik uchun)."""
+    code = str(deal.get("person_code") or "").strip()
+    if not code:
+        return None
+    if code in clients:
+        return clients[code]
+    try:
+        buyer = fetch_legal_person(code)
+    except Exception as e:
+        print(f"[mijoz so'rovda xato] person_code={code}: {e}")
+        return None
+    clients[code] = buyer          # None ham keshlanadi
+    save_clients(clients)
+    return buyer
 
 
 def deal_key(company: dict, deal: dict) -> str:
@@ -77,7 +109,7 @@ def _is_excluded_warehouse(order: dict) -> bool:
     return codes.issubset(excluded)
 
 
-def run_once(sent: set) -> None:
+def run_once(sent: set, clients: dict) -> None:
     # Oxirgi 1 kun oralig'ini so'raymiz (Smartup 7 kungacha ruxsat beradi)
     now = datetime.now()
     date_to = now.strftime("%d.%m.%Y")
@@ -106,7 +138,8 @@ def run_once(sent: set) -> None:
             if key in sent:
                 continue  # allaqachon yuborilgan
             try:
-                path = build_spec(deal, company)
+                buyer = get_buyer(deal, clients)  # mijoz bank ma'lumoti (keshlangan)
+                path = build_spec(deal, company, buyer)
                 shtat = (deal.get("sales_manager_name") or "").strip()  # UI "Штат" ustuni
                 caption = f'{company["name"]} — {shtat}' if shtat else company["name"]
                 send_excel(company["telegram_chat"], path, caption)
@@ -122,9 +155,10 @@ def run_once(sent: set) -> None:
 def main():
     print("Smartup -> Telegram bot ishga tushdi. Ctrl+C bilan to'xtating.")
     sent = load_sent()
+    clients = load_clients()
     while True:
         try:
-            run_once(sent)
+            run_once(sent, clients)
         except Exception as e:
             print(f"Umumiy xato: {e}")
         time.sleep(config.POLL_INTERVAL_SECONDS)

@@ -20,6 +20,34 @@ import config
 
 
 ENDPOINT = "/b/trade/txs/tdeal/order$export"
+LEGAL_PERSON_ENDPOINT = "/b/anor/mxsx/mr/legal_person$export"
+
+
+def _headers() -> dict:
+    return {
+        "project_code": config.SMARTUP_PROJECT_CODE,
+        "filial_id": "",  # BO'SH bo'lishi shart (aks holda 401)
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _auth() -> HTTPBasicAuth:
+    return HTTPBasicAuth(config.SMARTUP_USERNAME, config.SMARTUP_PASSWORD)
+
+
+def fetch_legal_person(person_code: str) -> dict | None:
+    """Mijoz (yuridik shaxs) ma'lumotlarini `code` (order'dagi person_code)
+    bo'yicha oladi: tin, vat_code, main_phone, address, bank_accounts (Р/с, МФО).
+    Topilmasa None. ESLATMA: References limiti 100/kun — main.py'da keshlanadi."""
+    if not person_code:
+        return None
+    url = config.SMARTUP_BASE_URL + LEGAL_PERSON_ENDPOINT
+    body = {"code": str(person_code)}
+    resp = requests.post(url, json=body, headers=_headers(), auth=_auth(), timeout=60)
+    resp.raise_for_status()
+    items = resp.json().get("legal_person", []) or []
+    return items[0] if items else None
 
 
 def fetch_all_orders(date_from: str, date_to: str) -> list[dict]:
