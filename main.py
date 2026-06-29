@@ -2,11 +2,12 @@
 main.py — hammasini birlashtiruvchi asosiy fayl.
 
 Ishlash mantig'i (har POLL_INTERVAL_SECONDS da takrorlanadi):
-  1) Har 3 tashkilot bo'yicha Smartup'dan "to delivered" deal'larni oladi
-  2) Avval yuborilmagan deal'larni tanlaydi (takror yubormaslik uchun)
-  3) Har biri uchun Спецификация Excel yasaydi
-  4) O'sha tashkilotning Telegram guruhiga yuboradi
-  5) Yuborilgan deal ID sini `sent_deals.json` ga yozib qo'yadi
+  1) BITTA so'rov bilan Smartup'dan "Отгружен" (B#S) orderlarni oladi
+  2) Har bir orderni filial_id+subfilial_code bo'yicha kerakli kompaniyaga ajratadi
+  3) Avval yuborilmagan orderlarni tanlaydi (takror yubormaslik uchun)
+  4) Har biri uchun Спецификация Excel yasaydi
+  5) O'sha kompaniyaning Telegram guruhiga yuboradi
+  6) Yuborilgan order ID sini `sent_deals.json` ga yozib qo'yadi
 
 Ishga tushirish:  python main.py
 To'xtatish:        Ctrl + C
@@ -19,7 +20,7 @@ import traceback
 from datetime import datetime, timedelta
 
 import config
-from smartup_client import fetch_deals
+from smartup_client import fetch_all_orders
 from excel_builder import build_spec
 from telegram_sender import send_excel
 
@@ -43,14 +44,19 @@ def deal_key(company: dict, deal: dict) -> str:
     return f'{company["name"]}:{did}'
 
 
+def order_belongs(order: dict, company: dict) -> bool:
+    """Order shu kompaniyaga tegishlimi — filial_id (+subfilial_code) bo'yicha.
+    subfilial_code berilmagan bo'lsa, o'sha filialdagi barcha order tegishli."""
+    if str(order.get("filial_id") or "") != str(company.get("filial_id") or ""):
+        return False
+    sub = (company.get("subfilial_code") or "").strip()
+    if sub:  # subfilial ko'rsatilgan bo'lsa — aniq mos kelishi shart
+        return str(order.get("subfilial_code") or "") == sub
+    return True
+
+
 def _order_warehouse_codes(order: dict) -> set:
-    """Order qaysi ombor(lar)ga tegishli — kodlar to'plamini qaytaradi.
-    Avval order darajasidagi maydonni, bo'lmasa tovarlardagini tekshiradi."""
-    # ehtimoliy order-darajasidagi nomlar:
-    for k in ("warehouse_code", "warehouse", "ombor_code"):
-        if order.get(k):
-            return {str(order[k]).strip()}
-    # bo'lmasa — tovarlardan yig'amiz:
+    """Order qaysi ombor(lar)ga tegishli — tovarlardagi warehouse_code to'plami."""
     codes = set()
     for it in order.get("order_products", []) or []:
         wc = it.get("warehouse_code")
@@ -67,8 +73,7 @@ def _is_excluded_warehouse(order: dict) -> bool:
     codes = _order_warehouse_codes(order)
     if not codes:
         return False
-    # Barcha tovarlar chetlatilgan ombordan bo'lsagina yubormaymiz
-    # (aralash bo'lsa — yuboriladi; kerak bo'lsa bu shartni o'zgartiring).
+    # Barcha tovarlar chetlatilgan ombordan bo'lsagina yubormaymiz.
     return codes.issubset(excluded)
 
 
@@ -78,36 +83,25 @@ def run_once(sent: set) -> None:
     date_to = now.strftime("%d.%m.%Y")
     date_from = (now - timedelta(days=1)).strftime("%d.%m.%Y")
 
+    # BITTA so'rov — hamma kompaniya uchun.
+    try:
+        orders = fetch_all_orders(date_from, date_to)
+    except Exception as e:
+        print(f"Smartup so'rovda xato: {e}")
+        return
+
     for company in config.COMPANIES:
-        try:
-            deals = fetch_deals(company, date_from, date_to)
-        except Exception as e:
-            print(f"[{company['name']}] Smartup so'rovda xato: {e}")
-            continue
+        company_orders = [o for o in orders if order_belongs(o, company)]
 
-        # exclude_producer_codes: BP Pharma'dan Bromedix order'larini olib tashlash.
-        # ESLATMA: bu bitta order BITTA producer'ga tegishli deb hisoblaydi.
-        # Agar bir order'da BP va Bromedix tovarlari ARALASH bo'lsa, bu logikani
-        # qayta ko'rib chiqish kerak.
-        excl = company.get("exclude_producer_codes")
-        if excl:
-            try:
-                excluded = fetch_deals(company, date_from, date_to,
-                                       producer_codes=excl)
-                excluded_ids = {e.get("deal_id") for e in excluded}
-                deals = [d for d in deals if d.get("deal_id") not in excluded_ids]
-            except Exception as e:
-                print(f"[{company['name']}] exclude filtrda xato: {e}")
-
-        # Ombor filtri: "Терминал" (config'dagi kodlar) order'larini yubormaymiz.
-        before = len(deals)
-        deals = [d for d in deals if not _is_excluded_warehouse(d)]
-        skipped = before - len(deals)
+        # Ombor filtri: "Терминал" (config'dagi kodlar) orderlarini yubormaymiz.
+        before = len(company_orders)
+        company_orders = [o for o in company_orders if not _is_excluded_warehouse(o)]
+        skipped = before - len(company_orders)
         if skipped:
             print(f"[{company['name']}] {skipped} ta order ombor bo'yicha "
                   f"chetlatildi (Терминал).")
 
-        for deal in deals:
+        for deal in company_orders:
             key = deal_key(company, deal)
             if key in sent:
                 continue  # allaqachon yuborilgan

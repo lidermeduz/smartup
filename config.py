@@ -5,6 +5,16 @@ Bu fayl xavfsiz (parol yo'q), shuning uchun uni o'zgartirish kerak emas.
 Ishlatish:
   1) cp .env.example .env
   2) .env ni ochib haqiqiy qiymatlarni qo'ying
+
+ARXITEKTURA (haqiqiy Smartup tuzilishiga moslangan):
+  - 3 kompaniya BITTA Smartup hisobida (project_code = pfl).
+  - Bitta so'rov bilan HAMMA order olinadi (filial_id header BO'SH bo'lishi shart).
+  - Kompaniyalar javobdagi `filial_id` + `subfilial_code` bo'yicha KOD ICHIDA
+    ajratiladi (Смартап UI'dagi "Проект" ustuni shunga mos keladi):
+        Gynomedix : filial_id 18004635
+        BP Pharma : filial_id 17986720, subfilial_code 59591
+        Bromedix  : filial_id 17986720, subfilial_code 59592
+  - Kerakli status: "B#S" (UI'da "Отгружен").
 """
 
 import os
@@ -26,6 +36,7 @@ def _list(key: str, default=None):
 
 # ── Smartup API ──
 SMARTUP_BASE_URL = _env("SMARTUP_BASE_URL", "https://smartup.online")
+SMARTUP_PROJECT_CODE = _env("SMARTUP_PROJECT_CODE", "pfl")  # uchchala kompaniya uchun bitta
 SMARTUP_USERNAME = _env("SMARTUP_USERNAME")
 SMARTUP_PASSWORD = _env("SMARTUP_PASSWORD")
 
@@ -33,23 +44,23 @@ SMARTUP_PASSWORD = _env("SMARTUP_PASSWORD")
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 
 # ── Filtrlar ──
-TARGET_STATUSES = _list("TARGET_STATUSES", ["to delivered"])
+# "B#S" = Отгружен (Smartup UI). Faqat shu statusdagi orderlar yuboriladi.
+TARGET_STATUSES = _list("TARGET_STATUSES", ["B#S"])
+# "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar yuborilmaydi.
 EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES")
 
 # ── Tekshirish oralig'i ──
 POLL_INTERVAL_SECONDS = int(_env("POLL_INTERVAL_SECONDS", "600"))
 
 # ── 3 ta tashkilot ──
-# Maxfiy/o'zgaruvchi qiymatlar .env dan olinadi.
-# supplier_* — hujjatda chiqadigan DOIMIY ma'lumot (maxfiy emas), shu yerda.
+# filial_id + subfilial_code — javobni ajratish uchun (header EMAS).
+# subfilial_code bo'sh bo'lsa: o'sha filialdagi BARCHA order shu kompaniyaga tegishli.
+# supplier_* — hujjatda chiqadigan DOIMIY ma'lumot (maxfiy emas), keyin to'ldiriladi.
 COMPANIES = [
     {
         "name": "Gynomedix",
-        "project_code": _env("GYNOMEDIX_PROJECT_CODE"),
         "filial_id": _env("GYNOMEDIX_FILIAL_ID"),
-        "filial_code": _env("GYNOMEDIX_FILIAL_CODE"),
-        "producer_codes": _list("GYNOMEDIX_PRODUCER_CODES"),
-        "exclude_producer_codes": _list("GYNOMEDIX_EXCLUDE_PRODUCER_CODES"),
+        "subfilial_code": _env("GYNOMEDIX_SUBFILIAL_CODE"),
         "telegram_chat": _env("GYNOMEDIX_CHAT_ID"),
         "supplier_name": 'MCHJ "GYNOMEDIX"',
         "supplier_address": "Toshkent sh., ... (to'ldiring)",
@@ -59,11 +70,8 @@ COMPANIES = [
     },
     {
         "name": "BP Pharma",
-        "project_code": _env("BP_PHARMA_PROJECT_CODE"),
         "filial_id": _env("BP_PHARMA_FILIAL_ID"),
-        "filial_code": _env("BP_PHARMA_FILIAL_CODE"),
-        "producer_codes": _list("BP_PHARMA_PRODUCER_CODES"),
-        "exclude_producer_codes": _list("BP_PHARMA_EXCLUDE_PRODUCER_CODES"),
+        "subfilial_code": _env("BP_PHARMA_SUBFILIAL_CODE"),
         "telegram_chat": _env("BP_PHARMA_CHAT_ID"),
         "supplier_name": 'MCHJ "BP PHARMA"',
         "supplier_address": "... (to'ldiring)",
@@ -73,11 +81,8 @@ COMPANIES = [
     },
     {
         "name": "Bromedix",
-        "project_code": _env("BROMEDIX_PROJECT_CODE"),
         "filial_id": _env("BROMEDIX_FILIAL_ID"),
-        "filial_code": _env("BROMEDIX_FILIAL_CODE"),
-        "producer_codes": _list("BROMEDIX_PRODUCER_CODES"),
-        "exclude_producer_codes": _list("BROMEDIX_EXCLUDE_PRODUCER_CODES"),
+        "subfilial_code": _env("BROMEDIX_SUBFILIAL_CODE"),
         "telegram_chat": _env("BROMEDIX_CHAT_ID"),
         "supplier_name": 'MCHJ "BROMEDIX"',
         "supplier_address": "... (to'ldiring)",
