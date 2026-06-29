@@ -67,59 +67,66 @@ def build_spec(deal: dict, company: dict) -> str:
     # ── Postavshik (tashkilotning o'zi — config'dan, doimiy) ──
     supplier_lines = [
         f'Поставщик: {company.get("supplier_name", company["name"])}',
-        f'АДРЕС: {company.get("supplier_address", "")}',
-        f'ТЕЛ: {company.get("supplier_phone", "")}',
+        f'Адрес: {company.get("supplier_address", "")}',
+        f'Тел: {company.get("supplier_phone", "")}',
         f'ИНН: {company.get("supplier_inn", "")}',
+        f'Р/с: {company.get("supplier_account", "")}',
+        f'МФО: {company.get("supplier_mfo", "")}',
+        f'Регис. код плател. НДС: {company.get("supplier_vat_code", "")}',
     ]
     # ── Pokupatel (deal'dan: mijoz) ──
     buyer_lines = [
         f'ПОКУПАТЕЛЬ: {_g(deal, "person_name")}',
-        f'АДРЕС: {_g(deal, "delivery_address_full", "delivery_address_short")}',
-        f'ТЕЛ: ',  # javobda mijoz telefoni yo'q
+        f'Адрес: {_g(deal, "delivery_address_full", "delivery_address_short")}',
+        f'Тел: ',  # javobda mijoz telefoni yo'q
         f'ИНН: {_g(deal, "person_tin")}',
     ]
+    info_start = 5
     for i, text in enumerate(supplier_lines):
-        r = 5 + i
+        r = info_start + i
         ws.merge_cells(f"A{r}:E{r}")
         ws[f"A{r}"] = text
         ws[f"A{r}"].font = small
         ws[f"A{r}"].alignment = left
     for i, text in enumerate(buyer_lines):
-        r = 5 + i
+        r = info_start + i
         ws.merge_cells(f"F{r}:I{r}")
         ws[f"F{r}"] = text
         ws[f"F{r}"].font = small
         ws[f"F{r}"].alignment = left
 
-    # ── Jadval sarlavhasi (10-11 qatorlar) ──
+    # ── Jadval sarlavhasi (info blokidan keyin, dinamik joylashadi) ──
+    nblock = max(len(supplier_lines), len(buyer_lines))
+    hdr1 = info_start + nblock + 1   # bitta bo'sh qator tashlab
+    hdr2 = hdr1 + 1
     single = {
         "A": "№", "B": "НОМЕНКЛАТУРА", "C": "ИКПУ", "D": "кол-во",
         "E": "Цена", "F": "Стоимость поставки",
         "I": "Стоим. Поставки с учетом НДС",
     }
     for col, text in single.items():
-        ws.merge_cells(f"{col}10:{col}11")
-        ws[f"{col}10"] = text
-        ws[f"{col}10"].font = bold
-        ws[f"{col}10"].alignment = center
-    ws.merge_cells("G10:H10")
-    ws["G10"] = "НДС"
-    ws["G10"].font = bold
-    ws["G10"].alignment = center
-    ws["G11"] = "ставка"
-    ws["H11"] = "сумма"
-    ws["G11"].font = bold
-    ws["H11"].font = bold
-    ws["G11"].alignment = center
-    ws["H11"].alignment = center
+        ws.merge_cells(f"{col}{hdr1}:{col}{hdr2}")
+        ws[f"{col}{hdr1}"] = text
+        ws[f"{col}{hdr1}"].font = bold
+        ws[f"{col}{hdr1}"].alignment = center
+    ws.merge_cells(f"G{hdr1}:H{hdr1}")
+    ws[f"G{hdr1}"] = "НДС"
+    ws[f"G{hdr1}"].font = bold
+    ws[f"G{hdr1}"].alignment = center
+    ws[f"G{hdr2}"] = "ставка"
+    ws[f"H{hdr2}"] = "сумма"
+    ws[f"G{hdr2}"].font = bold
+    ws[f"H{hdr2}"].font = bold
+    ws[f"G{hdr2}"].alignment = center
+    ws[f"H{hdr2}"].alignment = center
     for col in "ABCDEFGHI":
-        for row in (10, 11):
+        for row in (hdr1, hdr2):
             ws[f"{col}{row}"].border = box
 
     # ── Tovarlar (order_products) ──
     items = _g(deal, "order_products", default=[])
     num_fmt = "#,##0.00"
-    start = 12
+    start = hdr2 + 1
     r = start
     for idx, it in enumerate(items, start=1):
         name = _g(it, "product_name")
