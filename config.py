@@ -52,6 +52,17 @@ EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES")
 # ── Tekshirish oralig'i ──
 POLL_INTERVAL_SECONDS = int(_env("POLL_INTERVAL_SECONDS", "600"))
 
+# ── ИКПУ (МХИК) ──
+# Smartup order export ИКПУ qaytarmaydi. Mahsulotlar 2 toifaga bo'linadi:
+#   - Aksariyati БАД (sirop, kapsula, tabletka, tomchi) -> IKPU_DEFAULT
+#   - Vaginal suppozitoriy / intim krem -> maxsus kod
+# Mahsulot NOMIDA (kichik harf) quyidagi kalit so'zlardan biri bo'lsa,
+# o'sha maxsus ИКПУ ishlatiladi; aks holda IKPU_DEFAULT.
+IKPU_DEFAULT = "02106999028000000"
+IKPU_BY_KEYWORD = {
+    "03307007005000000": ["супп", "интим", "бактерел", "велора", "регинель"],
+}
+
 # ── 3 ta tashkilot ──
 # filial_id + subfilial_code — javobni ajratish uchun (header EMAS).
 # subfilial_code bo'sh bo'lsa: o'sha filialdagi BARCHA order shu kompaniyaga tegishli.

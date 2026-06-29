@@ -15,6 +15,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 
+import config
+
+
+def _ikpu_for(product_name: str) -> str:
+    """Mahsulot nomidan ИКПУ (МХИК) ni aniqlaydi.
+    Order export ИКПУ qaytarmagani uchun nom bo'yicha toifaga ajratamiz."""
+    n = (product_name or "").lower()
+    for code, keywords in config.IKPU_BY_KEYWORD.items():
+        if any(kw in n for kw in keywords):
+            return code
+    return config.IKPU_DEFAULT
+
 
 def _g(d: dict, *keys, default=""):
     """Bir nechta mumkin bo'lgan kalitlardan birinchi topilganini oladi."""
@@ -130,9 +142,9 @@ def build_spec(deal: dict, company: dict) -> str:
     r = start
     for idx, it in enumerate(items, start=1):
         name = _g(it, "product_name")
-        # ИКПУ (МХИК): javobda alohida maydon yo'q. Tizimingizda qaysi
-        # maydonda kelishini tekshiring. Hozircha product_local_code -> product_code:
-        ikpu = _g(it, "product_local_code", "product_code")
+        # ИКПУ (МХИК): order export uni qaytarmaydi -> mahsulot nomidan aniqlanadi
+        # (config.IKPU_BY_KEYWORD / IKPU_DEFAULT).
+        ikpu = _ikpu_for(name)
         qty = float(_g(it, "sold_quant", "order_quant", default=0) or 0)
         price = float(_g(it, "product_price", default=0) or 0)
         vat = float(_g(it, "vat_percent", default=12) or 12)
