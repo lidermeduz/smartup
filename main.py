@@ -107,7 +107,8 @@ def run_once(sent: set) -> None:
                 continue  # allaqachon yuborilgan
             try:
                 path = build_spec(deal, company)
-                caption = f'{company["name"]} — yangi yetkazma (Спецификация)'
+                shtat = (deal.get("sales_manager_name") or "").strip()  # UI "Штат" ustuni
+                caption = f'{company["name"]} — {shtat}' if shtat else company["name"]
                 send_excel(company["telegram_chat"], path, caption)
                 sent.add(key)
                 save_sent(sent)
