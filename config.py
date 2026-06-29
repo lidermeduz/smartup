@@ -80,7 +80,7 @@ COMPANIES = [
         "supplier_account": "220208000107185255001",
         "supplier_mfo": "01095",
         "supplier_vat_code": "326060260809",
-        "supplier_director": "",
+        "supplier_director": "MAMATKULOV S.A.",
     },
     {
         "name": "BP Pharma",
@@ -96,7 +96,7 @@ COMPANIES = [
         "supplier_account": "20208000300628163001",
         "supplier_mfo": "00433",
         "supplier_vat_code": "326060002559",
-        "supplier_director": "",
+        "supplier_director": "KARABAYEV U.A.",
     },
     {
         "name": "Bromedix",
@@ -110,6 +110,6 @@ COMPANIES = [
         "supplier_account": "20208000300628163001",
         "supplier_mfo": "00433",
         "supplier_vat_code": "326060002559",
-        "supplier_director": "",
+        "supplier_director": "KARABAYEV U.A.",
     },
 ]

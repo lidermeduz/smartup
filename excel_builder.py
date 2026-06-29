@@ -1,12 +1,18 @@
 """
-excel_builder.py — bitta deal'dan rasmingizdagi kabi "Спецификация"
-Excel faylini yasaydi.
+excel_builder.py — bitta deal'dan haqiqiy "Спецификация" Excel faylini yasaydi.
 
 build_spec(deal, company) -> tayyor .xlsx fayl yo'lini qaytaradi.
 
-MUHIM: deal lug'atidagi maydon nomlari ("deal_nomi", "items" va h.k.)
-Smartup javobiga qarab farq qiladi. Pastdagi `_get` yordamida
-maydonlarni o'z javobingizga moslang (TODO joylari).
+Format haqiqiy namuna fayllarga (Спец PFL / Спец GMX) moslangan:
+  Ustunlar: №, Номенклатура, ИКПУ, кол-во, Цена с НДС, Стоимость поставки,
+            ставка, НДС, Стоим. поставки с учетом НДС.
+
+НДС hisobi (MUHIM — Smartup'ning haqiqiy maydonlari bilan):
+  - product_price  = Цена с НДС (НДС ICHIDA bo'lgan dona narx)
+  - sold_amount    = qty * price = Стоим. поставки с учетом НДС (J)
+  - vat_amount     = НДС summasi (I)
+  - net = sold_amount - vat_amount = Стоимость поставки (G, НДСsiz)
+  - ставка = vat_percent / 100 (masalan 0.12)
 """
 
 import os
@@ -16,6 +22,29 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 
 import config
+
+
+def _g(d: dict, *keys, default=""):
+    """Bir nechta mumkin bo'lgan kalitlardan birinchi topilganini oladi."""
+    for k in keys:
+        if k in d and d[k] not in (None, ""):
+            return d[k]
+    return default
+
+
+def _num(value, default=0.0) -> float:
+    """Stringni floatga aylantiradi (bo'sh bo'lsa default)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _date_only(value: str) -> str:
+    """ '29.06.2026 14:30:00' -> '29.06.2026' (vaqtni kesib tashlaydi). """
+    if not value:
+        return ""
+    return str(value).split(" ")[0]
 
 
 def _ikpu_for(product_name: str) -> str:
@@ -28,19 +57,63 @@ def _ikpu_for(product_name: str) -> str:
     return config.IKPU_DEFAULT
 
 
-def _g(d: dict, *keys, default=""):
-    """Bir nechta mumkin bo'lgan kalitlardan birinchi topilganini oladi."""
-    for k in keys:
-        if k in d and d[k] not in (None, ""):
-            return d[k]
-    return default
+# ── Summani so'z bilan yozish (rus tilida) ──
+_ONES_M = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять']
+_ONES_F = ['', 'одна', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять']
+_TEENS = ['десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать',
+          'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать']
+_TENS = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят',
+         'семьдесят', 'восемьдесят', 'девяносто']
+_HUNDREDS = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот',
+             'семьсот', 'восемьсот', 'девятьсот']
 
 
-def _date_only(value: str) -> str:
-    """ '29.06.2026 14:30:00' -> '29.06.2026' (vaqtni kesib tashlaydi). """
-    if not value:
-        return ""
-    return str(value).split(" ")[0]
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    n = abs(n) % 100
+    if 11 <= n <= 14:
+        return many
+    d = n % 10
+    if d == 1:
+        return one
+    if 2 <= d <= 4:
+        return few
+    return many
+
+
+def _triple(num: int, fem: bool) -> list:
+    """0..999 sonni so'zlarga (ro'yxat)."""
+    w = []
+    h, t, o = num // 100, (num % 100) // 10, num % 10
+    if h:
+        w.append(_HUNDREDS[h])
+    if t == 1:
+        w.append(_TEENS[o])
+    else:
+        if t:
+            w.append(_TENS[t])
+        if o:
+            w.append((_ONES_F if fem else _ONES_M)[o])
+    return w
+
+
+def _rus_amount_words(n: float) -> str:
+    """Butun sonni rus tilida so'z bilan yozadi (masalan 'один миллион ...')."""
+    n = int(round(n))
+    if n == 0:
+        return "ноль"
+    parts = []
+    millions = n // 1_000_000
+    thousands = (n // 1000) % 1000
+    rest = n % 1000
+    if millions:
+        parts += _triple(millions, False)
+        parts.append(_plural(millions, 'миллион', 'миллиона', 'миллионов'))
+    if thousands:
+        parts += _triple(thousands, True)
+        parts.append(_plural(thousands, 'тысяча', 'тысячи', 'тысяч'))
+    if rest:
+        parts += _triple(rest, False)
+    return " ".join(parts)
 
 
 def build_spec(deal: dict, company: dict) -> str:
@@ -57,174 +130,181 @@ def build_spec(deal: dict, company: dict) -> str:
     reg = Font(name="Arial", size=9)
     small = Font(name="Arial", size=8)
 
-    widths = [4, 26, 20, 8, 11, 14, 7, 12, 14]
+    # A  B   C   D    E   F   G    H   I   J
+    widths = [4, 22, 14, 19, 7, 12, 14, 7, 12, 15]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
-    # ── Sarlavha ── (haqiqiy maydonlar)
-    spec_no = _g(deal, "delivery_number", "deal_id", default="—")
+    # ── Sarlavha (bitta katakda 2 qator) ──
+    spec_no = _g(deal, "delivery_number", default="")
     spec_date = _date_only(_g(deal, "delivery_date", "deal_time", "booked_date"))
-    dog_no = _g(deal, "contract_number", default="—")
-    dog_date = ""  # javobda shartnoma sanasi yo'q; kerak bo'lsa qo'shing
+    dog_no = _g(deal, "contract_number", default="")
+    dog_date = ""  # shartnoma sanasi javobda yo'q
+    ws.merge_cells("B2:J2")
+    ws["B2"] = (f"Спецификация № {spec_no} от {spec_date}\n"
+                f"Приложение к дог № {dog_no} от {dog_date}")
+    ws["B2"].font = bold
+    ws["B2"].alignment = center
+    ws.row_dimensions[2].height = 32
 
-    ws.merge_cells("C2:G2")
-    ws["C2"] = f"Спецификация № {spec_no} от {spec_date}"
-    ws["C2"].font = bold
-    ws["C2"].alignment = center
-    ws.merge_cells("C3:G3")
-    ws["C3"] = f"Приложение к дог № {dog_no} от {dog_date}"
-    ws["C3"].font = bold
-    ws["C3"].alignment = center
-
-    # ── Postavshik (tashkilotning o'zi — config'dan, doimiy) ──
-    supplier_lines = [
-        f'Поставщик: {company.get("supplier_name", company["name"])}',
-        f'Адрес: {company.get("supplier_address", "")}',
-        f'Тел: {company.get("supplier_phone", "")}',
-        f'ИНН: {company.get("supplier_inn", "")}',
-        f'Р/с: {company.get("supplier_account", "")}',
-        f'МФО: {company.get("supplier_mfo", "")}',
-        f'Регис. код плател. НДС: {company.get("supplier_vat_code", "")}',
+    # ── Поставщик (chap) va Покупатель (o'ng) bloklari ──
+    supplier_rows = [
+        ("Поставщик:", company.get("supplier_name", company["name"])),
+        ("Адрес:", company.get("supplier_address", "")),
+        ("Тел:", company.get("supplier_phone", "")),
+        ("ИНН:", company.get("supplier_inn", "")),
+        ("Р/с:", company.get("supplier_account", "")),
+        ("МФО:", company.get("supplier_mfo", "")),
+        ("Регис. код плател. НДС:", company.get("supplier_vat_code", "")),
     ]
-    # ── Pokupatel (deal'dan: mijoz) ──
-    buyer_lines = [
-        f'ПОКУПАТЕЛЬ: {_g(deal, "person_name")}',
-        f'Адрес: {_g(deal, "delivery_address_full", "delivery_address_short")}',
-        f'Тел: ',  # javobda mijoz telefoni yo'q
-        f'ИНН: {_g(deal, "person_tin")}',
+    buyer_rows = [
+        ("Покупатель:", _g(deal, "person_name")),
+        ("Адрес:", _g(deal, "delivery_address_full", "delivery_address_short")),
+        ("Тел:", _g(deal, "person_phone")),       # odatda javobda yo'q
+        ("ИНН:", _g(deal, "person_tin")),
+        ("Р/с:", ""),                              # mijoz bank ma'lumoti API'da yo'q
+        ("МФО:", ""),
+        ("Регис. код плател. НДС:", ""),
     ]
-    info_start = 5
-    for i, text in enumerate(supplier_lines):
+    info_start = 4
+    for i, (label, value) in enumerate(supplier_rows):
         r = info_start + i
-        ws.merge_cells(f"A{r}:E{r}")
-        ws[f"A{r}"] = text
-        ws[f"A{r}"].font = small
-        ws[f"A{r}"].alignment = left
-    for i, text in enumerate(buyer_lines):
+        ws[f"B{r}"] = label
+        ws[f"B{r}"].font = small
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws.merge_cells(f"C{r}:E{r}")
+        ws[f"C{r}"] = value
+        ws[f"C{r}"].font = small
+        ws[f"C{r}"].alignment = left
+    for i, (label, value) in enumerate(buyer_rows):
         r = info_start + i
-        ws.merge_cells(f"F{r}:I{r}")
-        ws[f"F{r}"] = text
-        ws[f"F{r}"].font = small
-        ws[f"F{r}"].alignment = left
+        ws[f"G{r}"] = label
+        ws[f"G{r}"].font = small
+        ws[f"G{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws.merge_cells(f"H{r}:J{r}")
+        ws[f"H{r}"] = value
+        ws[f"H{r}"].font = small
+        ws[f"H{r}"].alignment = left
 
-    # ── Jadval sarlavhasi (info blokidan keyin, dinamik joylashadi) ──
-    nblock = max(len(supplier_lines), len(buyer_lines))
-    hdr1 = info_start + nblock + 1   # bitta bo'sh qator tashlab
-    hdr2 = hdr1 + 1
-    single = {
-        "A": "№", "B": "НОМЕНКЛАТУРА", "C": "ИКПУ", "D": "кол-во",
-        "E": "Цена", "F": "Стоимость поставки",
-        "I": "Стоим. Поставки с учетом НДС",
+    # ── Jadval sarlavhasi ──
+    hdr = info_start + len(supplier_rows) + 1   # bitta bo'sh qator tashlab
+    headers = {
+        "A": "№", "D": "ИКПУ", "E": "кол-во", "F": "Цена с НДС",
+        "G": "Стоимость\nпоставки", "H": "ставка", "I": "НДС",
+        "J": "Стоим. поставки с\nучетом НДС",
     }
-    for col, text in single.items():
-        ws.merge_cells(f"{col}{hdr1}:{col}{hdr2}")
-        ws[f"{col}{hdr1}"] = text
-        ws[f"{col}{hdr1}"].font = bold
-        ws[f"{col}{hdr1}"].alignment = center
-    ws.merge_cells(f"G{hdr1}:H{hdr1}")
-    ws[f"G{hdr1}"] = "НДС"
-    ws[f"G{hdr1}"].font = bold
-    ws[f"G{hdr1}"].alignment = center
-    ws[f"G{hdr2}"] = "ставка"
-    ws[f"H{hdr2}"] = "сумма"
-    ws[f"G{hdr2}"].font = bold
-    ws[f"H{hdr2}"].font = bold
-    ws[f"G{hdr2}"].alignment = center
-    ws[f"H{hdr2}"].alignment = center
-    for col in "ABCDEFGHI":
-        for row in (hdr1, hdr2):
-            ws[f"{col}{row}"].border = box
+    ws.merge_cells(f"B{hdr}:C{hdr}")
+    ws[f"B{hdr}"] = "Номенклатура"
+    for col, text in headers.items():
+        ws[f"{col}{hdr}"] = text
+    for col in "ABCDEFGHIJ":
+        cell = ws[f"{col}{hdr}"]
+        cell.font = bold
+        cell.alignment = center
+        cell.border = box
+    ws.row_dimensions[hdr].height = 28
 
     # ── Tovarlar (order_products) ──
     items = _g(deal, "order_products", default=[])
-    num_fmt = "#,##0.00"
-    start = hdr2 + 1
+    money = "#,##0.00"
+    start = hdr + 1
     r = start
+    sum_qty = sum_net = sum_vat = sum_total = 0.0
     for idx, it in enumerate(items, start=1):
         name = _g(it, "product_name")
-        # ИКПУ (МХИК): order export uni qaytarmaydi -> mahsulot nomidan aniqlanadi
-        # (config.IKPU_BY_KEYWORD / IKPU_DEFAULT).
         ikpu = _ikpu_for(name)
-        qty = float(_g(it, "sold_quant", "order_quant", default=0) or 0)
-        price = float(_g(it, "product_price", default=0) or 0)
-        vat = float(_g(it, "vat_percent", default=12) or 12)
+        qty = _num(_g(it, "sold_quant", "order_quant", default=0))
+        price = _num(_g(it, "product_price", default=0))         # Цена с НДС
+        rate = _num(_g(it, "vat_percent", default=12)) / 100.0   # 0.12
+        total = _num(_g(it, "sold_amount", default=0)) or (qty * price)  # J
+        vat = _num(_g(it, "vat_amount", default=0))
+        if not vat and rate:
+            vat = total - total / (1 + rate)
+        net = total - vat                                        # G
 
         ws[f"A{r}"] = idx
+        ws.merge_cells(f"B{r}:C{r}")
         ws[f"B{r}"] = name
-        ws[f"C{r}"] = ikpu
-        ws[f"D{r}"] = qty
-        ws[f"E{r}"] = price
-        ws[f"F{r}"] = f"=D{r}*E{r}"
-        ws[f"G{r}"] = vat
-        ws[f"H{r}"] = f"=F{r}*G{r}/100"
-        ws[f"I{r}"] = f"=F{r}+H{r}"
-        for col in "ABCDEFGHI":
+        ws[f"D{r}"] = ikpu
+        ws[f"E{r}"] = qty
+        ws[f"F{r}"] = price
+        ws[f"G{r}"] = round(net, 2)
+        ws[f"H{r}"] = rate
+        ws[f"I{r}"] = round(vat, 2)
+        ws[f"J{r}"] = round(total, 2)
+
+        for col in "ABCDEFGHIJ":
             cell = ws[f"{col}{r}"]
             cell.border = box
             cell.font = reg
-            if col in "DEFHI":
-                cell.number_format = num_fmt
+            if col in "FGIJ":
+                cell.number_format = money
                 cell.alignment = right
             elif col == "B":
                 cell.alignment = left
+            elif col == "H":
+                cell.number_format = "0.00"
+                cell.alignment = center
+            elif col == "E":
+                cell.alignment = center
             else:
                 cell.alignment = center
+
+        sum_qty += qty
+        sum_net += net
+        sum_vat += vat
+        sum_total += total
         r += 1
 
     # ── Итого ──
     tr = r
-    ws[f"B{tr}"] = "итого"
-    ws[f"B{tr}"].font = bold
-    ws[f"B{tr}"].alignment = center
-    ws[f"D{tr}"] = f"=SUM(D{start}:D{r-1})"
-    ws[f"F{tr}"] = f"=SUM(F{start}:F{r-1})"
-    ws[f"H{tr}"] = f"=SUM(H{start}:H{r-1})"
-    ws[f"I{tr}"] = f"=SUM(I{start}:I{r-1})"
-    for col in "ABCDEFGHI":
+    ws.merge_cells(f"B{tr}:C{tr}")
+    ws[f"B{tr}"] = "Итого:"
+    ws[f"E{tr}"] = sum_qty
+    ws[f"G{tr}"] = round(sum_net, 2)
+    ws[f"I{tr}"] = round(sum_vat, 2)
+    ws[f"J{tr}"] = round(sum_total, 2)
+    for col in "ABCDEFGHIJ":
         cell = ws[f"{col}{tr}"]
         cell.border = box
-        if col in "DFHI":
-            cell.number_format = num_fmt
+        cell.font = bold
+        if col in "GIJ":
+            cell.number_format = money
             cell.alignment = right
-            cell.font = bold
+        elif col == "E":
+            cell.alignment = center
+        elif col == "B":
+            cell.alignment = right
 
-    # ── Pastki qism ──
-    fr = tr + 2
-    ws.merge_cells(f"A{fr}:F{fr}")
-    ws[f"A{fr}"] = "Всего отпущено на сумму:"
-    ws[f"A{fr}"].font = bold
-    ws[f"G{fr}"] = "сум"
-    ws[f"G{fr}"].font = bold
+    # ── Summa so'z bilan ──
+    wr = tr + 1
+    words = _rus_amount_words(sum_total).capitalize()
+    ws.merge_cells(f"B{wr}:J{wr}")
+    ws[f"B{wr}"] = f"Всего отпущено на сумму: {words} сум 00 тийин"
+    ws[f"B{wr}"].font = bold
+    ws[f"B{wr}"].alignment = left
 
-    sr = fr + 2
-    ws[f"A{sr}"] = "ПОСТАВЩИК"
-    ws[f"A{sr}"].font = bold
-    ws[f"F{sr}"] = "ПОКУПАТЕЛЬ"
-    ws[f"F{sr}"].font = bold
-    dr = sr + 2
-    ws[f"A{dr}"] = f'Директор: {company.get("supplier_director", "")} ______________'
-    ws[f"A{dr}"].font = reg
-    ws[f"F{dr}"] = "Директор: ______________"
-    ws[f"F{dr}"].font = reg
-
-    # ── Sariq eslatma ──
-    nr = dr + 3
-    ws.merge_cells(f"A{nr}:I{nr+1}")
-    note = ws[f"A{nr}"]
-    note.value = ("Эслатма: Ишончномани ва тулов топширикномасини биологик "
-                  "фаол кушимчалар учун деб утказинг !!!")
-    note.font = Font(name="Arial", size=10, bold=True, color="C00000")
-    note.alignment = Alignment(horizontal="center", vertical="center",
-                               wrap_text=True)
-    yellow = PatternFill("solid", start_color="FFFF00")
-    for col in "ABCDEFGHI":
-        ws[f"{col}{nr}"].fill = yellow
-        ws[f"{col}{nr+1}"].fill = yellow
+    # ── Imzolar ──
+    sr = wr + 2
+    ws[f"B{sr}"] = "ПОСТАВЩИК"
+    ws[f"G{sr}"] = "ПОКУПАТЕЛЬ"
+    ws[f"B{sr}"].font = bold
+    ws[f"G{sr}"].font = bold
+    dr = sr + 1
+    ws.merge_cells(f"B{dr}:E{dr}")
+    ws[f"B{dr}"] = (f'Директор: {company.get("supplier_director", "")} '
+                    f'_____________________\nМ.П')
+    ws[f"B{dr}"].font = reg
+    ws[f"B{dr}"].alignment = left
+    ws.merge_cells(f"G{dr}:J{dr}")
+    ws[f"G{dr}"] = "Директор: __________________\nМ.П"
+    ws[f"G{dr}"].font = reg
+    ws[f"G{dr}"].alignment = left
+    ws.row_dimensions[dr].height = 28
 
     ws.page_setup.orientation = "landscape"
     ws.print_options.horizontalCentered = True
 
-    # Faylni vaqtinchalik papkaga saqlaymiz
     deal_id = _g(deal, "deal_id", "id", default="deal")
     path = os.path.join(tempfile.gettempdir(),
                         f"Spetsifikatsiya_{company['name']}_{deal_id}.xlsx")
