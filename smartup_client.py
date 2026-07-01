@@ -21,6 +21,65 @@ import config
 
 ENDPOINT = "/b/trade/txs/tdeal/order$export"
 LEGAL_PERSON_ENDPOINT = "/b/anor/mxsx/mr/legal_person$export"
+# Mijoz kartasi (bank/tel/manzil) — web UI shu endpointdan oladi. Order'dagi
+# `person_id` bo'yicha ISTALGAN mijozni org doirasidan qat'i nazar qaytaradi
+# (legal_person$export faqat bitta org'ni ko'radi, bu esa hammasini).
+PERSON_VIEW_ENDPOINT = "/b/anor/mr/person/legal_person_view:model"
+
+
+def _unwrap(text: str):
+    """Smartup javobi `["(^_^)", model, data, ...]` ko'rinishida.
+    Ma'lumot (data) 3-elementда (index 2). Uni qaytaradi."""
+    import json
+    arr = json.loads(text)
+    if isinstance(arr, list) and len(arr) > 2 and isinstance(arr[2], dict):
+        return arr[2]
+    return {}
+
+
+def fetch_person_details(person_id: str) -> dict | None:
+    """Order'dagi `person_id` bo'yicha mijozning to'liq kartasini oladi.
+    Qaytaradi (excel_builder kutgan shakl):
+        {name, tin, main_phone, address, vat_code,
+         bank_accounts: [{bank_name, mfo, bank_account_code, is_main}]}
+    Bank ro'yxati view javobida massiv ko'rinishida:
+        [bank_name, mfo, account, display, is_main('Y'), currency, ?, state]"""
+    if not person_id:
+        return None
+    url = config.SMARTUP_BASE_URL + PERSON_VIEW_ENDPOINT
+    headers = {
+        "project_code": config.SMARTUP_PROJECT_CODE,
+        "filial_id": "",
+        "company_id": config.SMARTUP_COMPANY_ID,
+        "lang_code": "ru",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+    }
+    resp = requests.post(url, json={"person_id": str(person_id)},
+                         headers=headers, auth=_auth(), timeout=60)
+    resp.raise_for_status()
+    data = _unwrap(resp.text)
+    if not data:
+        return None
+    det = data.get("details", {}) or {}
+    banks = []
+    for b in data.get("bank_accounts", []) or []:
+        if not isinstance(b, list) or len(b) < 5:
+            continue
+        banks.append({
+            "bank_name": b[0],
+            "mfo": b[1],
+            "bank_account_code": b[2],
+            "is_main": b[4],
+        })
+    return {
+        "name": data.get("name") or "",
+        "tin": det.get("tin") or "",
+        "main_phone": det.get("main_phone") or "",
+        "address": det.get("address") or "",
+        "vat_code": det.get("vat_code") or "",  # view'да odatда yo'q
+        "bank_accounts": banks,
+    }
 
 
 def _headers() -> dict:
@@ -37,9 +96,8 @@ def _auth() -> HTTPBasicAuth:
 
 
 def fetch_legal_person(person_code: str) -> dict | None:
-    """Mijoz (yuridik shaxs) ma'lumotlarini `code` (order'dagi person_code)
-    bo'yicha oladi: tin, vat_code, main_phone, address, bank_accounts (Р/с, МФО).
-    Topilmasa None. ESLATMA: References limiti 100/kun — main.py'da keshlanadi."""
+    """Bitta mijozni `code` (order'dagi person_code) bo'yicha oladi.
+    ESLATMA: API `tin` filtrini e'tiborsiz qoldiradi — faqat `code` ishlaydi."""
     if not person_code:
         return None
     url = config.SMARTUP_BASE_URL + LEGAL_PERSON_ENDPOINT
@@ -48,6 +106,17 @@ def fetch_legal_person(person_code: str) -> dict | None:
     resp.raise_for_status()
     items = resp.json().get("legal_person", []) or []
     return items[0] if items else None
+
+
+def fetch_all_legal_persons() -> list[dict]:
+    """BARCHA yuridik shaxslarni (mijozlarni) bitta so'rovda oladi.
+    Har birida: code, tin, vat_code, main_phone, address, bank_accounts (Р/с, МФО).
+    Order'da person_code bo'lmasa, tin bo'yicha topish uchun kerak.
+    ESLATMA: References limiti 100/kun — main.py'da kuniga 1 marta yangilanadi."""
+    url = config.SMARTUP_BASE_URL + LEGAL_PERSON_ENDPOINT
+    resp = requests.post(url, json={}, headers=_headers(), auth=_auth(), timeout=120)
+    resp.raise_for_status()
+    return resp.json().get("legal_person", []) or []
 
 
 def fetch_all_orders(date_from: str, date_to: str) -> list[dict]:

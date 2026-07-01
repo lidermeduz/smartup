@@ -20,7 +20,7 @@ import traceback
 from datetime import datetime, timedelta
 
 import config
-from smartup_client import fetch_all_orders, fetch_legal_person
+from smartup_client import fetch_all_orders, fetch_person_details
 from excel_builder import build_spec
 from telegram_sender import send_excel
 
@@ -41,6 +41,8 @@ def save_sent(sent: set) -> None:
 
 
 def load_clients() -> dict:
+    """Mijozlar keshi: {person_id: {karta ma'lumoti}}. person_id bo'yicha keshlanadi,
+    shu bilan bitta mijoz uchun API'ga qayta-qayta murojaat qilinmaydi."""
     if os.path.exists(CLIENTS_CACHE_FILE):
         with open(CLIENTS_CACHE_FILE, encoding="utf-8") as f:
             return json.load(f)
@@ -52,22 +54,24 @@ def save_clients(clients: dict) -> None:
         json.dump(clients, f, ensure_ascii=False, indent=2)
 
 
-def get_buyer(deal: dict, clients: dict):
-    """Mijoz (yuridik shaxs) ma'lumotini keshdan yoki API'dan oladi.
-    References limiti 100/kun bo'lgani uchun person_code bo'yicha keshlaymiz.
-    Topilmaganini ham keshlaymiz (qayta-qayta so'ramaslik uchun)."""
-    code = str(deal.get("person_code") or "").strip()
-    if not code:
+def get_buyer(deal: dict, clients: dict) -> dict:
+    """Order'dagi `person_id` bo'yicha mijoz kartasini (bank/tel/manzil) oladi.
+    Kartani `legal_person_view:model` beradi — org doirasidan qat'i nazar,
+    uchala kompaniya (Gynomedix/BP/Bromedix) mijozlari uchun ham ishlaydi.
+    Natija person_id bo'yicha keshlanadi."""
+    pid = str(deal.get("person_id") or "").strip()
+    if not pid:
         return None
-    if code in clients:
-        return clients[code]
+    if pid in clients:
+        return clients[pid]
     try:
-        buyer = fetch_legal_person(code)
+        buyer = fetch_person_details(pid)
     except Exception as e:
-        print(f"[mijoz so'rovda xato] person_code={code}: {e}")
+        print(f"[mijoz {pid} olishda xato]: {e}")
         return None
-    clients[code] = buyer          # None ham keshlanadi
-    save_clients(clients)
+    if buyer:
+        clients[pid] = buyer
+        save_clients(clients)
     return buyer
 
 

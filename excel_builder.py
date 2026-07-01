@@ -47,6 +47,22 @@ def _date_only(value: str) -> str:
     return str(value).split(" ")[0]
 
 
+def _clean_product_name(name: str) -> str:
+    """Mahsulot nomidan ishlab chiqaruvchi qo'shimchasini olib tashlaydi.
+    Haqiqiy format: `<nom> / "PERFECTFOODLAB" OOO / г. Ташкент`
+    -> `<nom>`.
+    Ishlab chiqaruvchi qismi DOIM ' / "' (yoki ' / «') bilan boshlanadi.
+    Nomning o'z ichidagi qo'shtirnoq (masalan `ПРЕПАРАТ "X" 300мг`) hech
+    qachon ' / ' bilan oldinda kelmaydi, shuning uchun buzilmaydi."""
+    if not name:
+        return ""
+    s = str(name)
+    idxs = [s.find(sep) for sep in (' / "', ' / «', ' / “') if s.find(sep) != -1]
+    if idxs:
+        s = s[:min(idxs)]
+    return s.strip().strip("/").strip()
+
+
 def _ikpu_for(product_name: str) -> str:
     """Mahsulot nomidan ИКПУ (МХИК) ni aniqlaydi.
     Order export ИКПУ qaytarmagani uchun nom bo'yicha toifaga ajratamiz."""
@@ -116,6 +132,17 @@ def _rus_amount_words(n: float) -> str:
     return " ".join(parts)
 
 
+def _est_lines(text, width_chars: int) -> int:
+    """Matn berilgan ustun kengligida necha qatorga sig'ishini taxminlaydi."""
+    if not text:
+        return 1
+    total = 0
+    for part in str(text).split("\n"):
+        n = len(part)
+        total += max(1, (n + width_chars - 1) // max(1, width_chars))
+    return total
+
+
 def _main_bank(buyer: dict, field: str) -> str:
     """Mijozning ASOSIY (is_main='Y') bank hisobidan maydonni oladi."""
     accounts = (buyer or {}).get("bank_accounts") or []
@@ -179,24 +206,32 @@ def build_spec(deal: dict, company: dict, buyer: dict = None) -> str:
         ("Регис. код плател. НДС:", b.get("vat_code") or ""),
     ]
     info_start = 4
-    for i, (label, value) in enumerate(supplier_rows):
+    label_align = Alignment(horizontal="left", vertical="center", wrap_text=False)
+    for i in range(len(supplier_rows)):
         r = info_start + i
-        ws[f"B{r}"] = label
-        ws[f"B{r}"].font = small
-        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        slabel, sval = supplier_rows[i]
+        blabel, bval = buyer_rows[i]
+        # Поставщик (chap): yorliq A:B, qiymat C:E
+        ws.merge_cells(f"A{r}:B{r}")
+        ws[f"A{r}"] = slabel
+        ws[f"A{r}"].font = small
+        ws[f"A{r}"].alignment = label_align
         ws.merge_cells(f"C{r}:E{r}")
-        ws[f"C{r}"] = value
+        ws[f"C{r}"] = sval
         ws[f"C{r}"].font = small
         ws[f"C{r}"].alignment = left
-    for i, (label, value) in enumerate(buyer_rows):
-        r = info_start + i
-        ws[f"G{r}"] = label
-        ws[f"G{r}"].font = small
-        ws[f"G{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        # Покупатель (o'ng): yorliq F:G, qiymat H:J
+        ws.merge_cells(f"F{r}:G{r}")
+        ws[f"F{r}"] = blabel
+        ws[f"F{r}"].font = small
+        ws[f"F{r}"].alignment = label_align
         ws.merge_cells(f"H{r}:J{r}")
-        ws[f"H{r}"] = value
+        ws[f"H{r}"] = bval
         ws[f"H{r}"].font = small
         ws[f"H{r}"].alignment = left
+        # qator balandligi — eng uzun qiymatga qarab (yopishib qolmasligi uchun)
+        lines = max(_est_lines(sval, 40), _est_lines(bval, 33))
+        ws.row_dimensions[r].height = 12 * lines + 3
 
     # ── Jadval sarlavhasi ──
     hdr = info_start + len(supplier_rows) + 1   # bitta bo'sh qator tashlab
@@ -223,7 +258,7 @@ def build_spec(deal: dict, company: dict, buyer: dict = None) -> str:
     r = start
     sum_qty = sum_net = sum_vat = sum_total = 0.0
     for idx, it in enumerate(items, start=1):
-        name = _g(it, "product_name")
+        name = _clean_product_name(_g(it, "product_name"))
         ikpu = _ikpu_for(name)
         qty = _num(_g(it, "sold_quant", "order_quant", default=0))
         price = _num(_g(it, "product_price", default=0))         # Цена с НДС
@@ -261,6 +296,9 @@ def build_spec(deal: dict, company: dict, buyer: dict = None) -> str:
                 cell.alignment = center
             else:
                 cell.alignment = center
+
+        # qator balandligi — uzun mahsulot nomi yopishib qolmasligi uchun
+        ws.row_dimensions[r].height = 12 * _est_lines(name, 35) + 3
 
         sum_qty += qty
         sum_net += net

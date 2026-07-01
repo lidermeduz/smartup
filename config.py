@@ -39,6 +39,9 @@ SMARTUP_BASE_URL = _env("SMARTUP_BASE_URL", "https://smartup.online")
 SMARTUP_PROJECT_CODE = _env("SMARTUP_PROJECT_CODE", "pfl")  # uchchala kompaniya uchun bitta
 SMARTUP_USERNAME = _env("SMARTUP_USERNAME")
 SMARTUP_PASSWORD = _env("SMARTUP_PASSWORD")
+# Mijoz kartasini (bank ma'lumoti) olish uchun — Smartup web UI'dagi "company_id".
+# Bu yordamida org (Gynomedix/BP/Bromedix) doirasidan qat'i nazar mijoz ma'lumoti olinadi.
+SMARTUP_COMPANY_ID = _env("SMARTUP_COMPANY_ID", "14160")
 
 # ── Telegram ──
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
