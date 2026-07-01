@@ -102,15 +102,15 @@ def _order_warehouse_codes(order: dict) -> set:
 
 
 def _is_excluded_warehouse(order: dict) -> bool:
-    """Order TO'LIQ chetlatilgan ombor(lar)dan bo'lsa True qaytaradi."""
+    """Order tarkibida BIRORTA ham chetlatilgan (Терминал) ombor bo'lsa True.
+    Har filialning o'z Терминал kodi bor (BP Pharma=119835, ...). Buyurtmada
+    hatto bitta Терминал tovar bo'lsa ham butun buyurtma yuborilmaydi."""
     excluded = set(getattr(config, "EXCLUDE_WAREHOUSE_CODES", []) or [])
     if not excluded:
         return False
     codes = _order_warehouse_codes(order)
-    if not codes:
-        return False
-    # Barcha tovarlar chetlatilgan ombordan bo'lsagina yubormaymiz.
-    return codes.issubset(excluded)
+    # Kesishma bo'sh bo'lmasa — chetlatilgan ombor bor, yubormaymiz.
+    return bool(codes & excluded)
 
 
 def run_once(sent: set, clients: dict) -> None:
