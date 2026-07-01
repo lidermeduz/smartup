@@ -62,17 +62,21 @@ def get_buyer(deal: dict, clients: dict) -> dict:
     pid = str(deal.get("person_id") or "").strip()
     if not pid:
         return None
-    if pid in clients:
-        return clients[pid]
+    cached = clients.get(pid)
+    # Bank ma'lumoti TO'LIQ bo'lsa keshdan olamiz. Bo'sh bo'lsa (menejer
+    # mijoz kartasiga bankни hali kiritmagan) — har safar qayta so'raymiz,
+    # keyin to'ldirilsa avtomatik olinadi.
+    if cached and cached.get("bank_accounts"):
+        return cached
     try:
         buyer = fetch_person_details(pid)
     except Exception as e:
         print(f"[mijoz {pid} olishda xato]: {e}")
-        return None
-    if buyer:
-        clients[pid] = buyer
+        return cached
+    if buyer and buyer.get("bank_accounts"):
+        clients[pid] = buyer  # faqat to'liq ma'lumotni keshlaymiz
         save_clients(clients)
-    return buyer
+    return buyer or cached
 
 
 def deal_key(company: dict, deal: dict) -> str:
