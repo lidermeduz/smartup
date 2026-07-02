@@ -149,7 +149,15 @@ def run_once(sent: set, clients: dict) -> None:
                 buyer = get_buyer(deal, clients)  # mijoz bank ma'lumoti (keshlangan)
                 path = build_spec(deal, company, buyer)
                 shtat = (deal.get("sales_manager_name") or "").strip()  # UI "Штат" ustuni
-                caption = f'{company["name"]} — {shtat}' if shtat else company["name"]
+                mijoz = ((buyer or {}).get("name")
+                         or deal.get("person_name") or "").strip()  # Покупатель
+                # Caption: "Kompaniya — Штат — Mijoz" (bo'sh qismlar tushib qoladi)
+                parts = [company["name"]]
+                if shtat:
+                    parts.append(shtat)
+                if mijoz:
+                    parts.append(mijoz)
+                caption = " — ".join(parts)
                 send_excel(company["telegram_chat"], path, caption)
                 sent.add(key)
                 save_sent(sent)
