@@ -1,0 +1,10 @@
+services:
+  smartup-bot:
+    build: .
+    container_name: smartup-bot
+    restart: always
+    env_file: .env          # parollar va sozlamalar shu fayldan olinadi
+    environment:
+      - STATE_DIR=/app/data
+    volumes:
+      - ./data:/app/data     # sent_deals.json shu yerda saqlanadi (yo'qolmaydi)

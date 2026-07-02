@@ -24,8 +24,12 @@ from smartup_client import fetch_all_orders, fetch_person_details
 from excel_builder import build_spec
 from telegram_sender import send_excel
 
-STATE_FILE = os.path.join(os.path.dirname(__file__), "sent_deals.json")
-CLIENTS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "clients_cache.json")
+# Holat fayllari joyi. Docker'da STATE_DIR=/app/data qilib volume'ga
+# ulanadi — shunда konteyner qayta qurilса ham sent_deals saqlanib qoladi.
+DATA_DIR = os.getenv("STATE_DIR") or os.path.dirname(__file__)
+os.makedirs(DATA_DIR, exist_ok=True)
+STATE_FILE = os.path.join(DATA_DIR, "sent_deals.json")
+CLIENTS_CACHE_FILE = os.path.join(DATA_DIR, "clients_cache.json")
 
 
 def load_sent() -> set:

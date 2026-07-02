@@ -1,0 +1,9 @@
+.env
+data/
+venv/
+__pycache__/
+*.pyc
+sent_deals.json
+clients_cache.json
+.git/
+.gitignore
