@@ -25,6 +25,10 @@ LEGAL_PERSON_ENDPOINT = "/b/anor/mxsx/mr/legal_person$export"
 # `person_id` bo'yicha ISTALGAN mijozni org doirasidan qat'i nazar qaytaradi
 # (legal_person$export faqat bitta org'ni ko'radi, bu esa hammasini).
 PERSON_VIEW_ENDPOINT = "/b/anor/mr/person/legal_person_view:model"
+# Jismoniy shaxs (физлицо) kartasi. Ba'zi mijozlar Smartup'da yuridik emas,
+# jismoniy shaxs sifatida kiritilgan — ular uchun legal_person_view 500
+# "no_data_found" qaytaradi, karta shu endpointdan olinadi (INN/bank bo'lmaydi).
+NATURAL_PERSON_VIEW_ENDPOINT = "/b/anor/mr/person/natural_person_view:model"
 
 
 def _unwrap(text: str):
@@ -37,6 +41,38 @@ def _unwrap(text: str):
     return {}
 
 
+def _view_headers() -> dict:
+    return {
+        "project_code": config.SMARTUP_PROJECT_CODE,
+        "filial_id": "",
+        "company_id": config.SMARTUP_COMPANY_ID,
+        "lang_code": "ru",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+
+def fetch_natural_person_details(person_id: str) -> dict | None:
+    """Jismoniy shaxs (физлицо) kartasini oladi. `fetch_person_details` bilan
+    bir xil shaklda qaytaradi — INN/bank jismoniy shaxsda bo'lmaydi, bo'sh."""
+    url = config.SMARTUP_BASE_URL + NATURAL_PERSON_VIEW_ENDPOINT
+    resp = requests.post(url, json={"person_id": str(person_id)},
+                         headers=_view_headers(), auth=_auth(), timeout=60)
+    resp.raise_for_status()
+    data = _unwrap(resp.text)
+    if not data:
+        return None
+    det = data.get("details", {}) or {}
+    return {
+        "name": data.get("name") or "",
+        "tin": "",
+        "main_phone": det.get("main_phone") or "",
+        "address": det.get("address") or "",
+        "vat_code": "",
+        "bank_accounts": [],
+    }
+
+
 def fetch_person_details(person_id: str) -> dict | None:
     """Order'dagi `person_id` bo'yicha mijozning to'liq kartasini oladi.
     Qaytaradi (excel_builder kutgan shakl):
@@ -47,16 +83,13 @@ def fetch_person_details(person_id: str) -> dict | None:
     if not person_id:
         return None
     url = config.SMARTUP_BASE_URL + PERSON_VIEW_ENDPOINT
-    headers = {
-        "project_code": config.SMARTUP_PROJECT_CODE,
-        "filial_id": "",
-        "company_id": config.SMARTUP_COMPANY_ID,
-        "lang_code": "ru",
-        "Content-Type": "application/json;charset=UTF-8",
-        "Accept": "application/json, text/plain, */*",
-    }
+    headers = _view_headers()
     resp = requests.post(url, json={"person_id": str(person_id)},
                          headers=headers, auth=_auth(), timeout=60)
+    # Mijoz jismoniy shaxs bo'lsa legal_person_view 500 "no_data_found"
+    # qaytaradi — u holda jismoniy shaxs kartasidan olamiz.
+    if resp.status_code == 500 and "no_data_found" in resp.text:
+        return fetch_natural_person_details(person_id)
     resp.raise_for_status()
     data = _unwrap(resp.text)
     if not data:
