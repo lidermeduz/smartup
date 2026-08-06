@@ -100,12 +100,15 @@ def order_belongs(order: dict, company: dict) -> bool:
 
 
 def _order_warehouse_codes(order: dict) -> set:
-    """Order qaysi ombor(lar)ga tegishli — tovarlardagi warehouse_code to'plami."""
+    """Order qaysi ombor(lar)ga tegishli — tovarlardagi warehouse_code to'plami.
+    Probnik (bepul namuna) orderlarda tovarlar order_products emas,
+    order_gifts ichida keladi — ularni ham tekshiramiz."""
     codes = set()
-    for it in order.get("order_products", []) or []:
-        wc = it.get("warehouse_code")
-        if wc:
-            codes.add(str(wc).strip())
+    for key in ("order_products", "order_gifts", "order_consignments"):
+        for it in order.get(key, []) or []:
+            wc = it.get("warehouse_code")
+            if wc:
+                codes.add(str(wc).strip())
     return codes
 
 
