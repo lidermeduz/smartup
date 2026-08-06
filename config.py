@@ -14,7 +14,7 @@ ARXITEKTURA (haqiqiy Smartup tuzilishiga moslangan):
         Gynomedix : filial_id 18004635
         BP Pharma : filial_id 17986720, subfilial_code 59591
         Bromedix  : filial_id 17986720, subfilial_code 59592
-  - Kerakli status: "B#S" (UI'da "Отгружен").
+  - Kerakli status: "B#W" (UI'da "В ожидании").
 """
 
 import os
@@ -47,8 +47,9 @@ SMARTUP_COMPANY_ID = _env("SMARTUP_COMPANY_ID", "14160")
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 
 # ── Filtrlar ──
-# "B#S" = Отгружен (Smartup UI). Faqat shu statusdagi orderlar yuboriladi.
-TARGET_STATUSES = _list("TARGET_STATUSES", ["B#S"])
+# Faqat shu statusdagi orderlar yuboriladi. Kodlar (Smartup UI):
+#   B#N = Новый, B#W = В ожидании, B#S = Отгружен.
+TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
 # "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar yuborilmaydi.
 EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES")
 

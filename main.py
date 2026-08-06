@@ -2,7 +2,7 @@
 main.py — hammasini birlashtiruvchi asosiy fayl.
 
 Ishlash mantig'i (har POLL_INTERVAL_SECONDS da takrorlanadi):
-  1) BITTA so'rov bilan Smartup'dan "Отгружен" (B#S) orderlarni oladi
+  1) BITTA so'rov bilan Smartup'dan "В ожидании" (B#W) orderlarni oladi
   2) Har bir orderni filial_id+subfilial_code bo'yicha kerakli kompaniyaga ajratadi
   3) Avval yuborilmagan orderlarni tanlaydi (takror yubormaslik uchun)
   4) Har biri uchun Спецификация Excel yasaydi
