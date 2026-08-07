@@ -50,8 +50,9 @@ TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 # Faqat shu statusdagi orderlar yuboriladi. Kodlar (Smartup UI):
 #   B#N = Новый, B#W = В ожидании, B#S = Отгружен.
 TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
-# Probnik (bepul namuna) orderlar main.py'da summa bo'yicha chetlatiladi —
-# ombor kodi bo'yicha EMAS (o'sha omborlardan haqiqiy sotuv ham chiqadi).
+# "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar umuman
+# yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor.
+EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES")
 
 # ── Tekshirish oralig'i ──
 POLL_INTERVAL_SECONDS = int(_env("POLL_INTERVAL_SECONDS", "600"))

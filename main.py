@@ -99,17 +99,34 @@ def order_belongs(order: dict, company: dict) -> bool:
     return True
 
 
+def _order_warehouse_codes(order: dict) -> set:
+    """Order qaysi ombor(lar)ga tegishli — tovarlardagi warehouse_code to'plami.
+    Probnik orderlarda tovarlar `order_products` emas, `order_gifts` ichida
+    keladi — shuning uchun uchala ro'yxat ham tekshiriladi."""
+    codes = set()
+    for key in ("order_products", "order_gifts", "order_consignments"):
+        for it in order.get(key, []) or []:
+            wc = it.get("warehouse_code")
+            if wc:
+                codes.add(str(wc).strip())
+    return codes
+
+
+def _is_excluded_warehouse(order: dict) -> bool:
+    """Order tarkibida BIRORTA ham Терминал ombor bo'lsa True — bunday order
+    umuman yuborilmaydi (summasi qancha bo'lishidan qat'i nazar).
+    Kodlar `.env` dagi EXCLUDE_WAREHOUSE_CODES da (har filialning o'ziniki)."""
+    excluded = set(getattr(config, "EXCLUDE_WAREHOUSE_CODES", []) or [])
+    if not excluded:
+        return False
+    return bool(_order_warehouse_codes(order) & excluded)
+
+
 def _is_sample_order(order: dict) -> bool:
-    """Probnik (bepul namuna) orderimi — bo'lsa hujjat yasalmaydi.
-
-    Belgisi: pullik tovar qatori (`order_products`) umuman yo'q — hamma narsa
-    `order_gifts` ichida, narxi 0, jami summa ham 0. Haqiqiy sotuvda esa
-    doim `order_products` bor va summa noldan katta.
-
-    ESLATMA: ilgari bu ombor kodi (Терминал) bo'yicha aniqlanardi, lekin
-    o'sha omborlardan haqiqiy sotuv ham chiqar ekan, ustiga-ustak order
-    "В ожидании" dan "Отгружен" ga o'tganda ombor kodi o'zgaradi — shu
-    sababli ombor mezoni ishonchsiz, summa mezoni esa barqaror."""
+    """Probnik (bepul namuna) orderimi. Belgisi: pullik tovar qatori
+    (`order_products`) umuman yo'q — hamma narsa `order_gifts` ichida va
+    jami summa 0. Терминал filtri tutmay qolgan probniklar uchun qo'shimcha
+    himoya (masalan probnik boshqa ombordan berilgan bo'lsa)."""
     if order.get("order_products"):
         return False
     try:
@@ -117,6 +134,15 @@ def _is_sample_order(order: dict) -> bool:
     except (TypeError, ValueError):
         total = 0.0
     return total == 0
+
+
+def _skip_reason(order: dict) -> str | None:
+    """Order nega yuborilmaydi — sabab matni, yuborilsa None."""
+    if _is_excluded_warehouse(order):
+        return "Терминал ombor"
+    if _is_sample_order(order):
+        return "probnik (summa 0)"
+    return None
 
 
 def run_once(sent: set, clients: dict) -> None:
@@ -135,7 +161,7 @@ def run_once(sent: set, clients: dict) -> None:
     # Hech bir kompaniyaga tegishli bo'lmagan orderlar (odatda menejer Smartup'da
     # "Проект"ni ko'rsatmagan — subfilial_code bo'sh). Jimgina yo'qolib ketmasin.
     for o in orders:
-        if _is_sample_order(o):
+        if _skip_reason(o):
             continue
         if not any(order_belongs(o, c) for c in config.COMPANIES):
             print(f"[DIQQAT] order {o.get('deal_id')} hech bir kompaniyaga "
@@ -146,12 +172,16 @@ def run_once(sent: set, clients: dict) -> None:
     for company in config.COMPANIES:
         company_orders = [o for o in orders if order_belongs(o, company)]
 
-        # Probnik (bepul namuna) orderlarini yubormaymiz.
-        before = len(company_orders)
-        company_orders = [o for o in company_orders if not _is_sample_order(o)]
-        skipped = before - len(company_orders)
-        if skipped:
-            print(f"[{company['name']}] {skipped} ta probnik order chetlatildi.")
+        # Терминал ombor va probnik orderlarini yubormaymiz.
+        kept = []
+        for o in company_orders:
+            reason = _skip_reason(o)
+            if reason:
+                print(f"[{company['name']}] order {o.get('deal_id')} "
+                      f"chetlatildi — {reason}.")
+            else:
+                kept.append(o)
+        company_orders = kept
 
         for deal in company_orders:
             key = deal_key(company, deal)
