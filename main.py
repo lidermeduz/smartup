@@ -212,6 +212,14 @@ def run_once(sent: set, clients: dict) -> None:
 
 def main():
     print("Smartup -> Telegram bot ishga tushdi. Ctrl+C bilan to'xtating.")
+    # Amaldagi sozlamalar loglarda ko'rinib tursin — noto'g'ri .env darrov
+    # bilinadi (ilgari Терминал kodlari .env dan tushib qolgan edi).
+    print(f"Sozlamalar: status={config.TARGET_STATUSES}, "
+          f"Терминал omborlar={config.EXCLUDE_WAREHOUSE_CODES}, "
+          f"tekshiruv={config.POLL_INTERVAL_SECONDS}s")
+    if not config.EXCLUDE_WAREHOUSE_CODES:
+        print("[OGOHLANTIRISH] Терминал ombor kodlari bo'sh — Терминал "
+              "orderlari ham guruhga yuboriladi!")
     sent = load_sent()
     clients = load_clients()
     while True:

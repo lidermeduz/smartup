@@ -51,8 +51,12 @@ TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 #   B#N = Новый, B#W = В ожидании, B#S = Отгружен.
 TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
 # "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar umuman
-# yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor.
-EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES")
+# yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor:
+#   119835 — BP Pharma / Bromedix (filial 17986720) Терминал
+#   121374 — Gynomedix (filial 18004635) Терминал
+# Standart qiymat SHU YERDA turadi: `.env` da bu satr bo'lmasa ham filtr
+# ishlaydi (ilgari .env dan tushib qolganda Терминал guruhga tushib ketgan).
+EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 
 # ── Tekshirish oralig'i ──
 POLL_INTERVAL_SECONDS = int(_env("POLL_INTERVAL_SECONDS", "600"))
