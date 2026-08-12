@@ -4,6 +4,7 @@ venv/
 __pycache__/
 *.pyc
 sent_deals.json
+pending_deals.json
 clients_cache.json
 .git/
 .gitignore

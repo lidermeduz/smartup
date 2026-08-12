@@ -4,10 +4,16 @@ main.py — hammasini birlashtiruvchi asosiy fayl.
 Ishlash mantig'i (har POLL_INTERVAL_SECONDS da takrorlanadi):
   1) BITTA so'rov bilan Smartup'dan FAQAT "В ожидании" (B#W) orderlarni oladi
   2) Har bir orderni filial_id+subfilial_code bo'yicha kerakli kompaniyaga ajratadi
-  3) Avval yuborilmagan orderlarni tanlaydi (takror yubormaslik uchun)
-  4) Har biri uchun Спецификация Excel yasaydi
+  3) Yangi ko'rilganlarini NAVBATGA yozadi (`pending_deals.json`)
+  4) Navbatdagi har biri uchun Спецификация Excel yasaydi
   5) O'sha kompaniyaning Telegram guruhiga yuboradi
-  6) Yuborilgan order ID sini `sent_deals.json` ga yozib qo'yadi
+  6) Yuborilganini navbatdan chiqarib, `sent_deals.json` ga yozib qo'yadi
+
+Nega navbat kerak: bot orderni faqat "В ожидании" paytida ko'radi, lekin
+yuborish o'sha zahoti muvaffaqiyatsiz bo'lishi mumkin (Telegram xatosi, bot
+qayta ishga tushishi, Smartup limiti). Navbat bo'lmasa order keyingi
+tekshiruvgacha boshqa statusga o'tib ketadi va butunlay yo'qoladi. Navbatga
+tushgan order esa statusi o'zgargan bo'lsa ham yuborilaveradi.
 
 Ishga tushirish:  python main.py
 To'xtatish:        Ctrl + C
@@ -32,6 +38,21 @@ STATE_FILE = os.path.join(DATA_DIR, "sent_deals.json")
 # Ketma-ket yuborishlar orasidagi pauza (Telegram tezlik chegarasi uchun).
 SEND_PAUSE_SECONDS = 3
 CLIENTS_CACHE_FILE = os.path.join(DATA_DIR, "clients_cache.json")
+# "В ожидании" da KO'RILGAN, lekin hali yuborilmagan orderlar navbati.
+# Order shu statusdan chiqib ketsa ham navbatda qoladi va yuboriladi.
+PENDING_FILE = os.path.join(DATA_DIR, "pending_deals.json")
+
+
+def load_pending() -> dict:
+    if os.path.exists(PENDING_FILE):
+        with open(PENDING_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_pending(pending: dict) -> None:
+    with open(PENDING_FILE, "w", encoding="utf-8") as f:
+        json.dump(pending, f, ensure_ascii=False, indent=2)
 
 
 def load_sent() -> set:
@@ -147,19 +168,13 @@ def _skip_reason(order: dict) -> str | None:
     return None
 
 
-def run_once(sent: set, clients: dict) -> None:
-    # Oxirgi 1 kun oralig'ini so'raymiz (Smartup 7 kungacha ruxsat beradi)
-    now = datetime.now()
-    date_to = now.strftime("%d.%m.%Y")
-    date_from = (now - timedelta(days=1)).strftime("%d.%m.%Y")
+def collect_pending(orders: list, sent: set, pending: dict) -> int:
+    """"В ожидании" da ko'rilgan orderlarni navbatga yozadi.
 
-    # BITTA so'rov — hamma kompaniya uchun.
-    try:
-        orders = fetch_all_orders(date_from, date_to)
-    except Exception as e:
-        print(f"Smartup so'rovda xato: {e}")
-        return
-
+    Order shu lahzada yuborilmasa ham (Telegram xatosi, bot o'chib qolishi,
+    Smartup limiti) navbatda saqlanadi — keyin, order allaqachon boshqa
+    statusga o'tib ketgan bo'lsa ham, yuboriladi. Navbatga faqat В ожидании
+    paytida ko'rilgan orderlar tushadi."""
     # Hech bir kompaniyaga tegishli bo'lmagan orderlar (odatda menejer Smartup'da
     # "Проект"ni ko'rsatmagan — subfilial_code bo'sh). Jimgina yo'qolib ketmasin.
     for o in orders:
@@ -171,50 +186,93 @@ def run_once(sent: set, clients: dict) -> None:
                   f"subfilial={o.get('subfilial_code')}) — Smartup'da "
                   f"\"Проект\" ko'rsatilmagan bo'lishi mumkin.")
 
+    yangi = 0
     for company in config.COMPANIES:
-        company_orders = [o for o in orders if order_belongs(o, company)]
-
-        # Терминал ombor va probnik orderlarini yubormaymiz.
-        kept = []
-        for o in company_orders:
+        for o in orders:
+            if not order_belongs(o, company):
+                continue
             reason = _skip_reason(o)
             if reason:
                 print(f"[{company['name']}] order {o.get('deal_id')} "
                       f"chetlatildi — {reason}.")
-            else:
-                kept.append(o)
-        company_orders = kept
+                continue
+            key = deal_key(company, o)
+            if key in sent or key in pending:
+                continue  # yuborilgan yoki allaqachon navbatda
+            pending[key] = {
+                "company": company["name"],
+                "order": o,
+                "seen_on": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+            }
+            yangi += 1
+            print(f"[NAVBAT] {key} В ожидании da ko'rildi, navbatga olindi.")
+    if yangi:
+        save_pending(pending)
+    return yangi
 
-        for deal in company_orders:
-            key = deal_key(company, deal)
-            if key in sent:
-                continue  # allaqachon yuborilgan
-            try:
-                buyer = get_buyer(deal, clients)  # mijoz bank ma'lumoti (keshlangan)
-                path = build_spec(deal, company, buyer)
-                shtat = (deal.get("sales_manager_name") or "").strip()  # UI "Штат" ustuni
-                mijoz = ((buyer or {}).get("name")
-                         or deal.get("person_name") or "").strip()  # Покупатель
-                # Caption: "Kompaniya — Штат — Mijoz" (bo'sh qismlar tushib qoladi)
-                parts = [company["name"]]
-                if shtat:
-                    parts.append(shtat)
-                if mijoz:
-                    parts.append(mijoz)
-                caption = " — ".join(parts)
-                send_excel(company["telegram_chat"], path, caption)
-                sent.add(key)
-                save_sent(sent)
-                print(f"[OK] {key} yuborildi")
-                os.remove(path)
-                # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat
-                # beradi. Ketma-ket ko'p order yuborilganda (masalan bot bir
-                # muddat to'xtab qolib, keyin hammasini quvib yetganda)
-                # chegaraga urilmaslik uchun qisqa pauza.
-                time.sleep(SEND_PAUSE_SECONDS)
-            except Exception as e:
-                print(f"[XATO] {key}: {e}")
-                traceback.print_exc()
+
+def send_pending(sent: set, clients: dict, pending: dict) -> None:
+    """Navbatdagi orderlarni yuboradi. Yuborilgani navbatdan chiqadi,
+    xato bo'lgani navbatda qoladi va keyingi aylanishda qayta uriniladi."""
+    companies = {c["name"]: c for c in config.COMPANIES}
+    for key, item in list(pending.items()):
+        company = companies.get(item.get("company"))
+        deal = item.get("order") or {}
+        if not company:
+            print(f"[XATO] {key}: '{item.get('company')}' kompaniyasi "
+                  f"config'da yo'q, navbatdan olib tashlandi.")
+            pending.pop(key, None)
+            save_pending(pending)
+            continue
+        if key in sent:  # ehtiyot chorasi
+            pending.pop(key, None)
+            save_pending(pending)
+            continue
+        try:
+            buyer = get_buyer(deal, clients)  # mijoz bank ma'lumoti (keshlangan)
+            path = build_spec(deal, company, buyer)
+            shtat = (deal.get("sales_manager_name") or "").strip()  # UI "Штат" ustuni
+            mijoz = ((buyer or {}).get("name")
+                     or deal.get("person_name") or "").strip()  # Покупатель
+            # Caption: "Kompaniya — Штат — Mijoz" (bo'sh qismlar tushib qoladi)
+            parts = [company["name"]]
+            if shtat:
+                parts.append(shtat)
+            if mijoz:
+                parts.append(mijoz)
+            caption = " — ".join(parts)
+            send_excel(company["telegram_chat"], path, caption)
+            sent.add(key)
+            save_sent(sent)
+            pending.pop(key, None)
+            save_pending(pending)
+            print(f"[OK] {key} yuborildi")
+            os.remove(path)
+            # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat beradi.
+            # Navbat to'planib qolганda chegaraga urilmaslik uchun pauza.
+            time.sleep(SEND_PAUSE_SECONDS)
+        except Exception as e:
+            # Navbatda qoladi — keyingi aylanishda qayta uriniladi.
+            print(f"[XATO] {key}: {e} (navbatda qoldi, qayta uriniladi)")
+            traceback.print_exc()
+
+
+def run_once(sent: set, clients: dict, pending: dict) -> None:
+    # Oxirgi 1 kun oralig'ini so'raymiz (Smartup 7 kungacha ruxsat beradi)
+    now = datetime.now()
+    date_to = now.strftime("%d.%m.%Y")
+    date_from = (now - timedelta(days=1)).strftime("%d.%m.%Y")
+
+    # BITTA so'rov — hamma kompaniya uchun.
+    try:
+        orders = fetch_all_orders(date_from, date_to)
+        collect_pending(orders, sent, pending)
+    except Exception as e:
+        # So'rov muvaffaqiyatsiz bo'lsa ham navbatni yuborishga harakat
+        # qilamiz — ilgari ko'rilgan orderlar yo'qolib ketmasin.
+        print(f"Smartup so'rovda xato: {e}")
+
+    send_pending(sent, clients, pending)
 
 
 def main():
@@ -229,9 +287,13 @@ def main():
               "orderlari ham guruhga yuboriladi!")
     sent = load_sent()
     clients = load_clients()
+    pending = load_pending()
+    if pending:
+        print(f"Navbatda {len(pending)} ta yuborilmagan order bor — "
+              f"ular birinchi aylanishda yuboriladi.")
     while True:
         try:
-            run_once(sent, clients)
+            run_once(sent, clients, pending)
         except Exception as e:
             print(f"Umumiy xato: {e}")
         time.sleep(config.POLL_INTERVAL_SECONDS)
