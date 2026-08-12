@@ -47,9 +47,17 @@ SMARTUP_COMPANY_ID = _env("SMARTUP_COMPANY_ID", "14160")
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 
 # ── Filtrlar ──
-# Faqat shu statusdagi orderlar yuboriladi. Kodlar (Smartup UI):
-#   B#N = Новый, B#W = В ожидании, B#S = Отгружен.
-TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
+# Status kodlari va UI'dagi nomlari (haqiqiy hisobda tekshirilgan):
+#   B#N = Новый          — hali tasdiqlanmagan, spec yuborilmaydi
+#   B#W = В ожидании     — SPEC SHU YERDA YUBORILADI
+#   B#S = Отгружен       ─┐ В ожидании dan KEYINGI holatlar. Bot orderni
+#   A   = Доставлен      ─┤ В ожидании paytida ushlab ulgurmasa (limit
+#   D   = Доставлен      ─┘ tugagan yoki oraliqqa tushib qolgan), keyingi
+#                          statusda "quvib yetib" yuboradi.
+#   C   = Отменён/Удалён — BEKOR QILINGAN, hech qachon qo'shmang!
+# Takrorlanish xavfi yo'q: har order `sent_deals.json` da deal_id bo'yicha
+# bir marta belgilanadi va boshqa yuborilmaydi.
+TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W", "B#S", "A", "D"])
 # "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar umuman
 # yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor:
 #   119835 — BP Pharma / Bromedix (filial 17986720) Терминал

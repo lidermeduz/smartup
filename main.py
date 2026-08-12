@@ -29,6 +29,8 @@ from telegram_sender import send_excel
 DATA_DIR = os.getenv("STATE_DIR") or os.path.dirname(__file__)
 os.makedirs(DATA_DIR, exist_ok=True)
 STATE_FILE = os.path.join(DATA_DIR, "sent_deals.json")
+# Ketma-ket yuborishlar orasidagi pauza (Telegram tezlik chegarasi uchun).
+SEND_PAUSE_SECONDS = 3
 CLIENTS_CACHE_FILE = os.path.join(DATA_DIR, "clients_cache.json")
 
 
@@ -205,6 +207,11 @@ def run_once(sent: set, clients: dict) -> None:
                 save_sent(sent)
                 print(f"[OK] {key} yuborildi")
                 os.remove(path)
+                # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat
+                # beradi. Ketma-ket ko'p order yuborilganda (masalan bot bir
+                # muddat to'xtab qolib, keyin hammasini quvib yetganda)
+                # chegaraga urilmaslik uchun qisqa pauza.
+                time.sleep(SEND_PAUSE_SECONDS)
             except Exception as e:
                 print(f"[XATO] {key}: {e}")
                 traceback.print_exc()
