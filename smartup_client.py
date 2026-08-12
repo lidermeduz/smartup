@@ -152,6 +152,27 @@ def fetch_all_legal_persons() -> list[dict]:
     return resp.json().get("legal_person", []) or []
 
 
+def _report_limits(limits: dict) -> None:
+    """Smartup har javobda kunlik so'rov limitini qaytaradi
+    (`limit_quant` — sutkalik chek, `left_limit_quant` — qolgani).
+
+    Limit tugasa so'rovlar rad etiladi va o'sha vaqtda status o'zgargan
+    orderlar butunlay o'tkazib yuboriladi — shuning uchun qolgani ozayganda
+    logda ogohlantiramiz. POLL_INTERVAL_SECONDS shunga qarab tanlanishi kerak:
+    sutkada 86400/interval ta so'rov ketadi (300s -> 288 ta, limit 500)."""
+    try:
+        left = int(limits.get("left_limit_quant"))
+        total = int(limits.get("limit_quant"))
+    except (TypeError, ValueError):
+        return
+    if left <= 0:
+        print(f"[LIMIT TUGADI] Smartup kunlik {total} ta so'rov limiti tugadi — "
+              f"ertagacha yangi orderlar olinmaydi! POLL_INTERVAL_SECONDS ni "
+              f"oshiring.")
+    elif left <= max(25, total // 10):
+        print(f"[DIQQAT] Smartup kunlik limitidan {left}/{total} ta so'rov qoldi.")
+
+
 def fetch_all_orders(date_from: str, date_to: str) -> list[dict]:
     """Berilgan sana oralig'idagi kerakli statusdagi BARCHA orderlarni oladi.
     Bitta so'rov — 3 kompaniya uchun ham (keyin kod ichida ajratiladi).
@@ -174,6 +195,7 @@ def fetch_all_orders(date_from: str, date_to: str) -> list[dict]:
     resp.raise_for_status()
     data = resp.json()
 
+    _report_limits(data.get("limits") or {})
     orders = data.get("order", [])
 
     # Xavfsizlik uchun statusni kod ichida ham tekshiramiz (server filtri yetarli,

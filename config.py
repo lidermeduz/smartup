@@ -59,7 +59,11 @@ TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
 EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 
 # ── Tekshirish oralig'i ──
-POLL_INTERVAL_SECONDS = int(_env("POLL_INTERVAL_SECONDS", "600"))
+# DIQQAT: Smartup order eksporti uchun kunlik limit — 500 ta so'rov.
+# Sutkada 86400/interval ta so'rov ketadi, shuning uchun interval 180s dan
+# kichik bo'lmasligi kerak (120s -> 720 ta so'rov, limitdan oshib ketadi va
+# kun oxirida bot orderlarni umuman ko'rmay qoladi).
+POLL_INTERVAL_SECONDS = max(180, int(_env("POLL_INTERVAL_SECONDS", "300")))
 
 # ── ИКПУ (МХИК) ──
 # Smartup order export ИКПУ qaytarmaydi. Mahsulotlar 2 toifaga bo'linadi:
