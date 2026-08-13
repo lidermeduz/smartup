@@ -26,6 +26,7 @@ import traceback
 from datetime import datetime, timedelta
 
 import config
+import smartup_client
 from smartup_client import fetch_all_orders, fetch_person_details
 from excel_builder import build_spec
 from telegram_sender import send_excel
@@ -41,6 +42,26 @@ CLIENTS_CACHE_FILE = os.path.join(DATA_DIR, "clients_cache.json")
 # "В ожидании" da KO'RILGAN, lekin hali yuborilmagan orderlar navbati.
 # Order shu statusdan chiqib ketsa ham navbatda qoladi va yuboriladi.
 PENDING_FILE = os.path.join(DATA_DIR, "pending_deals.json")
+# Doimiy log. `docker logs` tarixi konteyner qayta qurilganda YO'QOLADI —
+# "bu order qachon va nega yuborilgan?" degan savolga javob topib bo'lmay
+# qoladi. Shuning uchun log volume'dagi faylga ham yoziladi.
+LOG_FILE = os.path.join(DATA_DIR, "bot.log")
+# Kunlik limitdan shuncha so'rov zaxira qoldiriladi (mijoz kartasini olish
+# kabi qo'shimcha so'rovlar uchun).
+LIMIT_RESERVE = 20
+# Interval qancha cho'zilsa ham shundan oshmaydi.
+MAX_INTERVAL_SECONDS = 1800
+
+
+def log(msg: str) -> None:
+    """Xabarni ekranga va DATA_DIR/bot.log ga vaqt tamg'asi bilan yozadi."""
+    line = f"{datetime.now():%d.%m.%Y %H:%M:%S} {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass  # log yozilmasa ham bot ishlashda davom etsin
 
 
 def load_pending() -> dict:
@@ -98,7 +119,7 @@ def get_buyer(deal: dict, clients: dict) -> dict:
     try:
         buyer = fetch_person_details(pid)
     except Exception as e:
-        print(f"[mijoz {pid} olishda xato]: {e}")
+        log(f"[mijoz {pid} olishda xato]: {e}")
         return cached
     if buyer and buyer.get("bank_accounts"):
         clients[pid] = buyer  # faqat to'liq ma'lumotni keshlaymiz
@@ -181,7 +202,7 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
         if _skip_reason(o):
             continue
         if not any(order_belongs(o, c) for c in config.COMPANIES):
-            print(f"[DIQQAT] order {o.get('deal_id')} hech bir kompaniyaga "
+            log(f"[DIQQAT] order {o.get('deal_id')} hech bir kompaniyaga "
                   f"tushmadi (filial={o.get('filial_id')}, "
                   f"subfilial={o.get('subfilial_code')}) — Smartup'da "
                   f"\"Проект\" ko'rsatilmagan bo'lishi mumkin.")
@@ -193,7 +214,7 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
                 continue
             reason = _skip_reason(o)
             if reason:
-                print(f"[{company['name']}] order {o.get('deal_id')} "
+                log(f"[{company['name']}] order {o.get('deal_id')} "
                       f"chetlatildi — {reason}.")
                 continue
             key = deal_key(company, o)
@@ -205,7 +226,7 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
                 "seen_on": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
             }
             yangi += 1
-            print(f"[NAVBAT] {key} В ожидании da ko'rildi, navbatga olindi.")
+            log(f"[NAVBAT] {key} В ожидании da ko'rildi, navbatga olindi.")
     if yangi:
         save_pending(pending)
     return yangi
@@ -219,7 +240,7 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
         company = companies.get(item.get("company"))
         deal = item.get("order") or {}
         if not company:
-            print(f"[XATO] {key}: '{item.get('company')}' kompaniyasi "
+            log(f"[XATO] {key}: '{item.get('company')}' kompaniyasi "
                   f"config'da yo'q, navbatdan olib tashlandi.")
             pending.pop(key, None)
             save_pending(pending)
@@ -246,14 +267,14 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
             save_sent(sent)
             pending.pop(key, None)
             save_pending(pending)
-            print(f"[OK] {key} yuborildi")
+            log(f"[OK] {key} yuborildi")
             os.remove(path)
             # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat beradi.
             # Navbat to'planib qolганda chegaraga urilmaslik uchun pauza.
             time.sleep(SEND_PAUSE_SECONDS)
         except Exception as e:
             # Navbatda qoladi — keyingi aylanishda qayta uriniladi.
-            print(f"[XATO] {key}: {e} (navbatda qoldi, qayta uriniladi)")
+            log(f"[XATO] {key}: {e} (navbatda qoldi, qayta uriniladi)")
             traceback.print_exc()
 
 
@@ -270,33 +291,61 @@ def run_once(sent: set, clients: dict, pending: dict) -> None:
     except Exception as e:
         # So'rov muvaffaqiyatsiz bo'lsa ham navbatni yuborishga harakat
         # qilamiz — ilgari ko'rilgan orderlar yo'qolib ketmasin.
-        print(f"Smartup so'rovda xato: {e}")
+        log(f"Smartup so'rovda xato: {e}")
 
     send_pending(sent, clients, pending)
 
 
+def next_interval() -> int:
+    """Keyingi tekshiruvgacha necha soniya kutish kerakligini hisoblaydi.
+
+    Smartup kunlik limiti (500) BUTUN hisobga tegishli — bot bilan birga
+    boshqa dasturlar ham undan yeydi. Qat'iy 300s da limit kechqurun tugab
+    qoladi va bot yarim tungacha KO'R bo'ladi: o'sha oynada "В ожидании" ga
+    tushib keyin boshqa statusga o'tgan orderlar butunlay yo'qoladi.
+
+    Shuning uchun qolgan so'rovlarni yarim tungacha teng taqsimlaymiz:
+    interval hech qachon sozlamadagidan kichik bo'lmaydi, lekin limit
+    kamayganda o'zi cho'ziladi. Limit har kuni yarim tunda tiklanadi."""
+    base = config.POLL_INTERVAL_SECONDS
+    left = smartup_client.LAST_LIMITS.get("left")
+    if not left:  # hali javob olinmagan yoki limit ma'lum emas
+        return base
+    now = datetime.now()
+    midnight = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    seconds_left = (midnight - now).total_seconds()
+    usable = max(1, left - LIMIT_RESERVE)
+    needed = int(seconds_left / usable)
+    interval = max(base, min(needed, MAX_INTERVAL_SECONDS))
+    if interval > base:
+        log(f"[LIMIT] {left} ta so'rov qoldi — tekshiruv oralig'i "
+            f"{interval}s ga cho'zildi (yarim tungacha yetishi uchun).")
+    return interval
+
+
 def main():
-    print("Smartup -> Telegram bot ishga tushdi. Ctrl+C bilan to'xtating.")
+    log("Smartup -> Telegram bot ishga tushdi. Ctrl+C bilan to'xtating.")
     # Amaldagi sozlamalar loglarda ko'rinib tursin — noto'g'ri .env darrov
     # bilinadi (ilgari Терминал kodlari .env dan tushib qolgan edi).
-    print(f"Sozlamalar: status={config.TARGET_STATUSES}, "
+    log(f"Sozlamalar: status={config.TARGET_STATUSES}, "
           f"Терминал omborlar={config.EXCLUDE_WAREHOUSE_CODES}, "
           f"tekshiruv={config.POLL_INTERVAL_SECONDS}s")
     if not config.EXCLUDE_WAREHOUSE_CODES:
-        print("[OGOHLANTIRISH] Терминал ombor kodlari bo'sh — Терминал "
+        log("[OGOHLANTIRISH] Терминал ombor kodlari bo'sh — Терминал "
               "orderlari ham guruhga yuboriladi!")
     sent = load_sent()
     clients = load_clients()
     pending = load_pending()
     if pending:
-        print(f"Navbatda {len(pending)} ta yuborilmagan order bor — "
+        log(f"Navbatda {len(pending)} ta yuborilmagan order bor — "
               f"ular birinchi aylanishda yuboriladi.")
     while True:
         try:
             run_once(sent, clients, pending)
         except Exception as e:
-            print(f"Umumiy xato: {e}")
-        time.sleep(config.POLL_INTERVAL_SECONDS)
+            log(f"Umumiy xato: {e}")
+        time.sleep(next_interval())
 
 
 if __name__ == "__main__":

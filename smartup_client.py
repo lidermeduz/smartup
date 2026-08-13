@@ -152,19 +152,33 @@ def fetch_all_legal_persons() -> list[dict]:
     return resp.json().get("legal_person", []) or []
 
 
+# Oxirgi javobdagi limit holati: {"left": qolgani, "total": sutkalik chek}.
+# main.py shu qiymatga qarab tekshirish oralig'ini cho'zadi (limit yarim
+# tungacha yetsin). Bo'sh bo'lsa — hali birorta javob olinmagan.
+LAST_LIMITS: dict = {}
+
+
 def _report_limits(limits: dict) -> None:
     """Smartup har javobda kunlik so'rov limitini qaytaradi
     (`limit_quant` — sutkalik chek, `left_limit_quant` — qolgani).
 
     Limit tugasa so'rovlar rad etiladi va o'sha vaqtda status o'zgargan
     orderlar butunlay o'tkazib yuboriladi — shuning uchun qolgani ozayganda
-    logda ogohlantiramiz. POLL_INTERVAL_SECONDS shunga qarab tanlanishi kerak:
-    sutkada 86400/interval ta so'rov ketadi (300s -> 288 ta, limit 500)."""
+    logda ogohlantiramiz va qiymatni LAST_LIMITS ga yozamiz.
+
+    DIQQAT: bu limit BUTUN Smartup hisobiga tegishli — shu login bilan
+    ishlayotgan boshqa dasturlar ham undan yeydi. Amalda kuzatilgani:
+    botning har aylanishiga 1 ta o'z so'rovi + ~1 ta begona so'rov to'g'ri
+    keladi, ya'ni 300s interval sutkasiga ~576 ta sarfga olib keladi va
+    limit (500) kechqurun tugab qoladi. Shuning uchun main.py intervalni
+    qolgan limitga qarab avtomatik cho'zadi."""
     try:
         left = int(limits.get("left_limit_quant"))
         total = int(limits.get("limit_quant"))
     except (TypeError, ValueError):
         return
+    LAST_LIMITS["left"] = left
+    LAST_LIMITS["total"] = total
     if left <= 0:
         print(f"[LIMIT TUGADI] Smartup kunlik {total} ta so'rov limiti tugadi — "
               f"ertagacha yangi orderlar olinmaydi! POLL_INTERVAL_SECONDS ni "

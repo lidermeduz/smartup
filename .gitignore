@@ -2,6 +2,7 @@
 sent_deals.json
 pending_deals.json
 clients_cache.json
+bot.log
 __pycache__/
 *.pyc
 venv/

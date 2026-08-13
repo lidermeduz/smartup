@@ -61,10 +61,12 @@ TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
 EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 
 # ── Tekshirish oralig'i ──
-# DIQQAT: Smartup order eksporti uchun kunlik limit — 500 ta so'rov.
-# Sutkada 86400/interval ta so'rov ketadi, shuning uchun interval 180s dan
-# kichik bo'lmasligi kerak (120s -> 720 ta so'rov, limitdan oshib ketadi va
-# kun oxirida bot orderlarni umuman ko'rmay qoladi).
+# DIQQAT: Smartup order eksporti uchun kunlik limit — 500 ta so'rov, va u
+# BUTUN hisobga tegishli: shu login bilan ishlayotgan boshqa dasturlar ham
+# undan yeydi (amalda kuzatilgani — bot har aylanishida 1 ta o'z so'rovi
+# ustiga ~1 ta begona so'rov to'g'ri keladi). Shu sababli bu qiymat faqat
+# ENG KICHIK oraliq: main.py dagi `next_interval()` qolgan limitga qarab
+# uni avtomatik cho'zadi, toki limit yarim tungacha yetsin.
 POLL_INTERVAL_SECONDS = max(180, int(_env("POLL_INTERVAL_SECONDS", "300")))
 
 # ── ИКПУ (МХИК) ──
