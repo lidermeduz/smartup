@@ -6,5 +6,8 @@ services:
     env_file: .env          # parollar va sozlamalar shu fayldan olinadi
     environment:
       - STATE_DIR=/app/data
+      # Loglardagi vaqt server vaqti bilan bir xil bo'lsin — aks holda
+      # konteyner UTC yozadi va log tekshirganda 5 soatlik farq chalg'itadi.
+      - TZ=Asia/Tashkent
     volumes:
       - ./data:/app/data     # sent_deals.json shu yerda saqlanadi (yo'qolmaydi)

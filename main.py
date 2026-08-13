@@ -267,7 +267,10 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
             save_sent(sent)
             pending.pop(key, None)
             save_pending(pending)
-            log(f"[OK] {key} yuborildi")
+            # chat_id ni ham yozamiz: `.env` da guruh kodi almashsa, hujjat
+            # "yuborildi" deb belgilanadi-yu eski guruhga ketadi. Keyin
+            # "qayerga ketdi?" degan savolga javob faqat shu satrdan topiladi.
+            log(f"[OK] {key} yuborildi -> chat {company['telegram_chat']}")
             os.remove(path)
             # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat beradi.
             # Navbat to'planib qolганda chegaraga urilmaslik uchun pauza.
