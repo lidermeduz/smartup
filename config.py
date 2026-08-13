@@ -47,11 +47,27 @@ SMARTUP_COMPANY_ID = _env("SMARTUP_COMPANY_ID", "14160")
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 
 # ── Filtrlar ──
-# FAQAT "В ожидании" statusidagi orderlar yuboriladi — boshqa hech qanday
-# status QO'SHILMASIN (Отгружен, Доставлен, Архив, Новый, Черновик,
-# В обработке, Отменен — hammasi chetda qoladi).
-#   B#W = В ожидании
-TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W"])
+# Status kodlari (Smartup UI bilan solishtirib tasdiqlangan):
+#   B#N = Новый          — hali tasdiqlanmagan, spec YUBORILMAYDI
+#   B#W = В ожидании     — spec shu bosqichda yuborilishi kerak
+#   B#S = Отгружен       ─┐ В ожидании dan KEYINGI bosqichlar
+#   A, D = Доставлен     ─┘
+#   C   = Отменён/Удалён — spec HECH QACHON yuborilmaydi
+#
+# NEGA faqat B#W emas: bot orderni "В ожидании" lahzasida ko'rishi kerak
+# edi, lekin ikki tekshiruv orasida order keyingi statusga o'tib ketsa
+# (yoki o'sha paytda kunlik limit tugagan bo'lsa) spec BUTUNLAY yo'qolardi.
+# Amalda yo'qolganlari: 1A-PHARM, keyin "BANIYAT SHIFO PHARM" (269498737 —
+# bot ko'rgunicha Отгружен ga o'tib ketgan). Keyingi statuslar ham
+# qabul qilinsa, bot o'tkazib yuborgan orderni "quvib yetib" yuboradi.
+#
+# Takror yuborilmaydi: har order `sent_deals.json` da deal_id bo'yicha
+# bir marta belgilanadi. C (Отменён) ro'yxatda YO'Q — bekor qilingan
+# orderga spec chiqmaydi.
+#
+# DIQQAT: bu ro'yxatni faqat B#W ga qaytarish yuqoridagi yo'qolishlarni
+# QAYTA boshlab yuboradi (ilgari shunday qilingan va order yo'qolgan).
+TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W", "B#S", "A", "D"])
 # "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar umuman
 # yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor:
 #   119835 — BP Pharma / Bromedix (filial 17986720) Терминал
