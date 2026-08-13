@@ -48,26 +48,33 @@ TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 
 # ── Filtrlar ──
 # Status kodlari (Smartup UI bilan solishtirib tasdiqlangan):
-#   B#N = Новый          — hali tasdiqlanmagan, spec YUBORILMAYDI
+#   B#N = Новый          — spec YUBORILMAYDI
 #   B#W = В ожидании     — spec shu bosqichda yuborilishi kerak
-#   B#S = Отгружен       ─┐ В ожидании dan KEYINGI bosqichlar
-#   A, D = Доставлен     ─┘
-#   C   = Отменён/Удалён — spec HECH QACHON yuborilmaydi
+#   B#S = Отгружен       — В ожидании dan KEYINGI bosqich
+#   A   = Архив          ─┐ bu holatlarga order В ожидании ga UMUMAN
+#   D   = Доставлен      ─┤ tushmasdan ham yetib kelishi mumkin, shuning
+#   C   = Отменён/Удалён ─┘ uchun ro'yxatda YO'Q
 #
-# NEGA faqat B#W emas: bot orderni "В ожидании" lahzasida ko'rishi kerak
-# edi, lekin ikki tekshiruv orasida order keyingi statusga o'tib ketsa
-# (yoki o'sha paytda kunlik limit tugagan bo'lsa) spec BUTUNLAY yo'qolardi.
-# Amalda yo'qolganlari: 1A-PHARM, keyin "BANIYAT SHIFO PHARM" (269498737 —
-# bot ko'rgunicha Отгружен ga o'tib ketgan). Keyingi statuslar ham
-# qabul qilinsa, bot o'tkazib yuborgan orderni "quvib yetib" yuboradi.
+# NEGA faqat B#W kifoya emas: bot orderni "В ожидании" lahzasida ko'rishi
+# kerak edi, lekin ikki tekshiruv orasida order keyingi statusga o'tib
+# ketsa (yoki o'sha paytda kunlik limit tugagan bo'lsa) spec BUTUNLAY
+# yo'qolardi. Amalda yo'qolganlari: 1A-PHARM, keyin "BANIYAT SHIFO PHARM"
+# (269498737) va "MADINA-FARM QARSHI" (268772562) — uchalasi ham bot
+# ko'rgunicha Отгружен ga o'tib ketgan.
+#
+# NEGA aynan B#S qo'shildi: Отгружен — В ожидании dan keyingi BEVOSITA
+# bosqich, ya'ni bu statusdagi order albatta В ожидании dan o'tgan. Order
+# o'tkazib yuborilgan bo'lsa, bot uni shu bosqichda quvib yetib yuboradi.
+# Архив/Доставлен ga esa order boshqa yo'l bilan ham kelishi mumkin —
+# ular qo'shilsa В ожидании ga hech tushmagan orderga ham spec chiqib
+# ketadi (tekshirilgan: 6 ta shunday order chiqib ketardi).
 #
 # Takror yuborilmaydi: har order `sent_deals.json` da deal_id bo'yicha
-# bir marta belgilanadi. C (Отменён) ro'yxatda YO'Q — bekor qilingan
-# orderga spec chiqmaydi.
+# bir marta belgilanadi.
 #
 # DIQQAT: bu ro'yxatni faqat B#W ga qaytarish yuqoridagi yo'qolishlarni
-# QAYTA boshlab yuboradi (ilgari shunday qilingan va order yo'qolgan).
-TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W", "B#S", "A", "D"])
+# QAYTA boshlab yuboradi (ilgari shunday qilingan va orderlar yo'qolgan).
+TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W", "B#S"])
 # "Терминал" ombor(lar)ining KOD(lar)i — shu ombordagi orderlar umuman
 # yuborilmaydi (summasidan qat'i nazar). Har filialning o'z kodi bor:
 #   119835 — BP Pharma / Bromedix (filial 17986720) Терминал
