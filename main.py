@@ -266,15 +266,17 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
             if mijoz:
                 parts.append(mijoz)
             caption = " — ".join(parts)
-            send_excel(company["telegram_chat"], path, caption)
+            dest = send_excel(company["telegram_chat"], path, caption)
             sent.add(key)
             save_sent(sent)
             pending.pop(key, None)
             save_pending(pending)
-            # chat_id ni ham yozamiz: `.env` da guruh kodi almashsa, hujjat
-            # "yuborildi" deb belgilanadi-yu eski guruhga ketadi. Keyin
-            # "qayerga ketdi?" degan savolga javob faqat shu satrdan topiladi.
-            log(f"[OK] {key} yuborildi -> chat {company['telegram_chat']}")
+            # Manzilni TELEGRAM javobidan yozamiz, config'dan emas — hujjat
+            # haqiqatda qaysi guruhga tushganining yagona ishonchli isboti
+            # shu. Order `sent_deals` ga tushgach qayta yuborilmaydi, shuning
+            # uchun "qayerga ketdi?" savoliga keyin javob topish shart.
+            log(f"[OK] {key} yuborildi -> chat {dest['chat_id']} "
+                f"\"{dest['chat_title']}\" msg {dest['message_id']}")
             os.remove(path)
             # Telegram bitta guruhga daqiqasiga ~20 ta xabarga ruxsat beradi.
             # Navbat to'planib qolганda chegaraga urilmaslik uchun pauza.
