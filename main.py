@@ -226,7 +226,11 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
                 "seen_on": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
             }
             yangi += 1
-            log(f"[NAVBAT] {key} В ожидании da ko'rildi, navbatga olindi.")
+            # Statusni ham yozamiz: order В ожидании da ko'rilganmi yoki
+            # allaqachon Отгружен ga o'tib ketganda quvib yetilganmi —
+            # keyin faqat shu satrdan bilinadi (API status tarixini bermaydi).
+            log(f"[NAVBAT] {key} navbatga olindi "
+                f"(status {o.get('status')}).")
     if yangi:
         save_pending(pending)
     return yangi
