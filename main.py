@@ -189,6 +189,31 @@ def _skip_reason(order: dict) -> str | None:
     return None
 
 
+def _order_date(order: dict):
+    """Order sanasi (date) — bo'lmasa yoki o'qib bo'lmasa None."""
+    for k in ("deal_time", "delivery_date", "booked_date"):
+        raw = str(order.get(k) or "").strip()[:10]
+        try:
+            return datetime.strptime(raw, "%d.%m.%Y").date()
+        except ValueError:
+            continue
+    return None
+
+
+def _manager_eligible(order: dict) -> bool:
+    """Терминал order menejerga yuborilsinmi. MANAGER_SINCE dan oldingi
+    (arxiv) orderlar yuborilmaydi. Sanasi o'qilmagan order yuboriladi —
+    spec jimgina yo'qolgandan ko'ra ortiqcha bittasi yaxshiroq."""
+    if not config.MANAGER_CHAT_ID:
+        return False
+    try:
+        since = datetime.strptime(config.MANAGER_SINCE, "%d.%m.%Y").date()
+    except ValueError:
+        return True
+    d = _order_date(order)
+    return d is None or d >= since
+
+
 def collect_pending(orders: list, sent: set, pending: dict) -> int:
     """"В ожидании" da ko'rilgan orderlarni navbatga yozadi.
 
@@ -211,6 +236,26 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
     for company in config.COMPANIES:
         for o in orders:
             if not order_belongs(o, company):
+                continue
+            # Терминал order guruhga emas, menejer shaxsiy chatiga ketadi.
+            # Probnik (summa 0) Терминал da bo'lsa ham hech qayerga ketmaydi.
+            # Faqat "В ожидании" (B#W) da ko'rilgani navbatga olinadi — B#S
+            # bo'yicha quvib yetish faqat guruh orderlari uchun.
+            if (_is_excluded_warehouse(o) and not _is_sample_order(o)
+                    and (o.get("status") or "").strip() == "B#W"
+                    and _manager_eligible(o)):
+                key = f"Menejer:{o.get('deal_id') or o.get('id') or ''}"
+                if key in sent or key in pending:
+                    continue
+                pending[key] = {
+                    "company": company["name"],
+                    "chat": config.MANAGER_CHAT_ID,
+                    "order": o,
+                    "seen_on": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+                }
+                yangi += 1
+                log(f"[NAVBAT] {key} navbatga olindi — Терминал ombor, "
+                    f"{company['name']} (status {o.get('status')}).")
                 continue
             reason = _skip_reason(o)
             if reason:
@@ -265,8 +310,11 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
                 parts.append(shtat)
             if mijoz:
                 parts.append(mijoz)
+            chat = item.get("chat") or company["telegram_chat"]
+            if item.get("chat"):  # menejerga ketayotgan Терминал order
+                parts.insert(0, "Терминал")
             caption = " — ".join(parts)
-            dest = send_excel(company["telegram_chat"], path, caption)
+            dest = send_excel(chat, path, caption)
             sent.add(key)
             save_sent(sent)
             pending.pop(key, None)

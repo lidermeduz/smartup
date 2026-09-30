@@ -34,5 +34,7 @@ def send_excel(chat_id: str, file_path: str, caption: str = "") -> dict:
     return {
         "message_id": msg.get("message_id"),
         "chat_id": chat.get("id"),
-        "chat_title": chat.get("title") or "",
+        # Shaxsiy chatda title bo'lmaydi — username/ism olinadi.
+        "chat_title": (chat.get("title") or chat.get("username")
+                       or chat.get("first_name") or ""),
     }

@@ -83,6 +83,18 @@ TARGET_STATUSES = _list("TARGET_STATUSES", ["B#W", "B#S"])
 # ishlaydi (ilgari .env dan tushib qolganda Терминал guruhga tushib ketgan).
 EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 
+# ── Menejerga yuboriladigan spec'lar ──
+# Терминал omboridagi orderlar guruhga YUBORILMAYDI — ularning spec'i shu
+# shaxsiy chatga ketadi (@BePerfectMenedjer). Probnik (summa 0, Терминал
+# da bo'lsa ham) va "Проект"siz orderlar bu yerga ham kelmaydi. Faqat
+# "В ожидании" (B#W) statusida ko'rilgan Терминал orderi yuboriladi. Bot shu odamga yoza olishi uchun u botga
+# /start bosgan bo'lishi shart. Bo'sh qilinsa — Терминал orderlari avvalgidek
+# hech qayerga yuborilmaydi.
+MANAGER_CHAT_ID = _env("MANAGER_CHAT_ID", "461967151")
+# Shu sanadan (dd.mm.yyyy) oldingi orderlar menejerga yuborilmaydi — funksiya
+# yoqilganda eski (arxiv) orderlar birdaniga yog'ilib ketmasligi uchun.
+MANAGER_SINCE = _env("MANAGER_SINCE", "30.09.2026")
+
 # ── Tekshirish oralig'i ──
 # DIQQAT: Smartup order eksporti uchun kunlik limit — 500 ta so'rov, va u
 # BUTUN hisobga tegishli: shu login bilan ishlayotgan boshqa dasturlar ham
