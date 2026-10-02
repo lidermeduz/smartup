@@ -90,7 +90,10 @@ EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 # Faqat "В ожидании" (B#W) statusida ko'rilgan Терминал orderi yuboriladi. Bot shu odamga yoza olishi uchun u botga
 # /start bosgan bo'lishi shart. Bo'sh qilinsa — Терминал orderlari avvalgidek
 # hech qayerga yuborilmaydi.
-MANAGER_CHAT_ID = _env("MANAGER_CHAT_ID", "461967151")
+# VAQTINCHA O'CHIRILGAN (02.10.2026): Smartup limiti oshirilguncha. Qayta
+# yoqish uchun standart qiymatni "461967151" ga qaytaring yoki .env ga
+# MANAGER_CHAT_ID=461967151 yozing.
+MANAGER_CHAT_ID = _env("MANAGER_CHAT_ID", "")
 # Shu sanadan (dd.mm.yyyy) oldingi orderlar menejerga yuborilmaydi — funksiya
 # yoqilganda eski (arxiv) orderlar birdaniga yog'ilib ketmasligi uchun.
 MANAGER_SINCE = _env("MANAGER_SINCE", "30.09.2026")
