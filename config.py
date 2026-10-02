@@ -85,9 +85,9 @@ EXCLUDE_WAREHOUSE_CODES = _list("EXCLUDE_WAREHOUSE_CODES", ["119835", "121374"])
 
 # ── Menejerga yuboriladigan spec'lar ──
 # Терминал omboridagi orderlar guruhga YUBORILMAYDI — ularning spec'i shu
-# shaxsiy chatga ketadi (@BePerfectMenedjer). Probnik (summa 0, Терминал
-# da bo'lsa ham) va "Проект"siz orderlar bu yerga ham kelmaydi. Faqat
-# "В ожидании" (B#W) statusida ko'rilgan Терминал orderi yuboriladi. Bot shu odamga yoza olishi uchun u botga
+# shaxsiy chatga ketadi (@BePerfectMenedjer), Терминал dagi probnik ham.
+# Boshqa ombordagi probnik va "Проект"siz orderlar bu yerga ham kelmaydi.
+# Faqat "В ожидании" (B#W) statusida ko'rilgan Терминал orderi yuboriladi. Bot shu odamga yoza olishi uchun u botga
 # /start bosgan bo'lishi shart. Bo'sh qilinsa — Терминал orderlari avvalgidek
 # hech qayerga yuborilmaydi.
 MANAGER_CHAT_ID = _env("MANAGER_CHAT_ID", "461967151")

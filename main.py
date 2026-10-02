@@ -237,24 +237,27 @@ def collect_pending(orders: list, sent: set, pending: dict) -> int:
         for o in orders:
             if not order_belongs(o, company):
                 continue
-            # Терминал order guruhga emas, menejer shaxsiy chatiga ketadi.
-            # Probnik (summa 0) Терминал da bo'lsa ham hech qayerga ketmaydi.
-            # Faqat "В ожидании" (B#W) da ko'rilgani navbatga olinadi — B#S
-            # bo'yicha quvib yetish faqat guruh orderlari uchun.
-            if (_is_excluded_warehouse(o) and not _is_sample_order(o)
+            # Терминал order (probnik bo'lsa ham) guruhga emas, menejer
+            # shaxsiy chatiga ketadi. Boshqa ombordagi probnik hech qayerga
+            # ketmaydi. Faqat "В ожидании" (B#W) da ko'rilgani navbatga
+            # olinadi — B#S bo'yicha quvib yetish faqat guruh orderlari uchun.
+            if (_is_excluded_warehouse(o)
                     and (o.get("status") or "").strip() == "B#W"
                     and _manager_eligible(o)):
                 key = f"Menejer:{o.get('deal_id') or o.get('id') or ''}"
                 if key in sent or key in pending:
                     continue
+                label = ("Терминал — Пробник" if _is_sample_order(o)
+                         else "Терминал")
                 pending[key] = {
                     "company": company["name"],
                     "chat": config.MANAGER_CHAT_ID,
+                    "label": label,
                     "order": o,
                     "seen_on": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
                 }
                 yangi += 1
-                log(f"[NAVBAT] {key} navbatga olindi — Терминал ombor, "
+                log(f"[NAVBAT] {key} navbatga olindi — {label}, "
                     f"{company['name']} (status {o.get('status')}).")
                 continue
             reason = _skip_reason(o)
@@ -312,7 +315,7 @@ def send_pending(sent: set, clients: dict, pending: dict) -> None:
                 parts.append(mijoz)
             chat = item.get("chat") or company["telegram_chat"]
             if item.get("chat"):  # menejerga ketayotgan Терминал order
-                parts.insert(0, "Терминал")
+                parts.insert(0, item.get("label") or "Терминал")
             caption = " — ".join(parts)
             dest = send_excel(chat, path, caption)
             sent.add(key)

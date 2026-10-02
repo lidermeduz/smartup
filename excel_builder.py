@@ -252,7 +252,9 @@ def build_spec(deal: dict, company: dict, buyer: dict = None) -> str:
     ws.row_dimensions[hdr].height = 28
 
     # ── Tovarlar (order_products) ──
-    items = _g(deal, "order_products", default=[])
+    # Probnik orderda pullik qator yo'q — tovarlar order_gifts ichida keladi
+    # (maydonlari bir xil, narx 0). Spec bo'sh chiqmasligi uchun shulardan.
+    items = deal.get("order_products") or deal.get("order_gifts") or []
     money = "#,##0.00"
     start = hdr + 1
     r = start
