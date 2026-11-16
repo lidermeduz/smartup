@@ -118,9 +118,21 @@ def _rus_amount_words(n: float) -> str:
     if n == 0:
         return "ноль"
     parts = []
-    millions = n // 1_000_000
+    # Har razryad alohida 0..999 bo'lishi shart: aks holda 1 milliarddan katta
+    # summada "millionlar" 1000 dan oshib, _triple ro'yxatdan chiqib ketardi.
+    if n >= 10 ** 15:
+        raise ValueError(f"summa juda katta: {n}")
+    trillions = n // 10 ** 12
+    billions = (n // 10 ** 9) % 1000
+    millions = (n // 1_000_000) % 1000
     thousands = (n // 1000) % 1000
     rest = n % 1000
+    if trillions:
+        parts += _triple(trillions, False)
+        parts.append(_plural(trillions, 'триллион', 'триллиона', 'триллионов'))
+    if billions:
+        parts += _triple(billions, False)
+        parts.append(_plural(billions, 'миллиард', 'миллиарда', 'миллиардов'))
     if millions:
         parts += _triple(millions, False)
         parts.append(_plural(millions, 'миллион', 'миллиона', 'миллионов'))
